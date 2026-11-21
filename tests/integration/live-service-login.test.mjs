@@ -31,6 +31,12 @@ test('live dedicated service identity rejects indirect, direct and administrativ
     'ALTER ROLE vv_ci_admission_a IN DATABASE verivaro_test RESET work_mem');
   await rejectAfter("ALTER ROLE verivaro_admission_service SET statement_timeout = '10s'",
     'ALTER ROLE verivaro_admission_service RESET statement_timeout');
+  // Database defaults apply to every service login even when neither login
+  // nor NOLOGIN group has an ALTER ROLE override.
+  await rejectAfter('ALTER DATABASE verivaro_test SET search_path TO public',
+    'ALTER DATABASE verivaro_test RESET search_path');
+  await rejectAfter("ALTER DATABASE verivaro_test SET work_mem = '16MB'",
+    'ALTER DATABASE verivaro_test RESET work_mem');
   // An already-switched session must not pass as the authenticated login,
   // even if the target role is the otherwise approved service group.
   const switched=await pool.connect();
