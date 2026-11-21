@@ -38,4 +38,7 @@ export VV_TLS_OLD_PASSWORD="$old" VV_TLS_NEW_PASSWORD="$next"
 psql -X -v ON_ERROR_STOP=1 -f db/tests/service_tls_logins.sql
 VV_TLS_FIXTURE="$tls_root" VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-service-tls.test.mjs
 VV_TLS_FIXTURE="$tls_root" VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-application-runtime.test.mjs
+# Real disposable PostgreSQL state verification with injected CLIENT failures.
+# This must never be run against external staging or a production cluster.
+VV_TLS_FIXTURE="$tls_root" VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-credential-faults.test.mjs
 cleanup_tls
