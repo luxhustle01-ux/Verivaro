@@ -1,0 +1,15 @@
+# G1 review-approval consumption register — single-host reference
+
+**21 November 2026. Reference/CI only.** This register is not independently administered, and cannot grant operational recovery authority.
+
+The new `src/security/provider-witness-recovery-consumption.mjs` is a strictly scoped file-backed hash-chain register for consuming otherwise-valid `REVIEW_ONLY` two-reviewer approvals. The caller must provide the exact trusted register floor `{serial,headHash}` from independent custody, plus separate reviewer verification keys, the incident evidence floor and a trusted clock. Its genesis helper is only for fixture provisioning; never derive an allegedly trusted head from the ledger being checked.
+
+Startup verifies the complete canonical consumption chain and exact externally pinned head and serial before acquiring an exclusive, private filesystem writer lock. It rechecks the same file inode under lock. The `consume` operation first verifies both Ed25519 reviewer signatures, exact evidence hash, expected approval ID, expiry and next serial. Rejected stale/forged requests never touch the log. A valid review is appended and fsynced under a single-writer lease; only after verifying the resulting chain does it acknowledge consumption. Competing requests cannot both consume the same serial on this one host.
+
+An interrupted write, uncertain fsync or lost acknowledgement permanently faults the instance, retains its lock, and requires supervised reconciliation. Restart against a stale independent floor refuses. A separate child-process crash after fsync simulates an uncertain acknowledgement and leaves an abandoned lock. No automatic repair, removal of locks or replay retry is implemented. This is NOT hardware power-loss verification.
+
+The return is `REVIEW_APPROVAL_CONSUMED_ONLY`, always `automaticRecoveryPermitted:false`. It does not invoke maintenance, delete evidence, publish the witness head, alter the external approval counter, or restart any system.
+
+**Remaining production-critical gaps:** The sample file and trusted floor on one CI machine are **not** independent monotonic custody; a privileged operator could roll both back. Local file locking is not cross-host consensus or fencing. The next serial/head must be separately published to a durable independent authority after consumption; if that publication fails, all operations must stop for supervised reconciliation. Reviewer identity policy, revocation, real clock custody, external approval permissions, disaster recovery and independent penetration review remain unbuilt. Keep PR #4 draft, unmerged, undeployed.
+
+**Approval-ID uniqueness rule:** The register also rejects an already-consumed approval ID on any later serial. Its complete chain verifier enforces uniqueness even when a malicious history is rehashed, and the admission path rejects an ID replay *before* writing, without corrupting an otherwise healthy register. This is still a single-host property, not distributed uniqueness under rollback of all custody domains.

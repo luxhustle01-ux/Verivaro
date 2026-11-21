@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-11-21",
+  "subject": "Verivaro engineering review branch; PR #4",
+  "evidenceClass": "repository-code-and-synthetic-CI",
+  "productReleaseApproved": false,
+  "productionSecurityCertified": false,
+  "commercialDemandValidated": false,
+  "approvedForAutomaticRecovery": false,
+  "sourceOfTruth": "docs/product/MASTER_BLUEPRINT.md",
+  "states": [
+    {
+      "id": "G0_CORE",
+      "label": "Deterministic core and evidence handling",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "src/security/submission-verifier.mjs",
+        "src/security/evidence-intelligence.mjs",
+        "tests/unit/core.test.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "blocker": "Full feature-level acceptance and independent benchmark are not evidenced."
+    },
+    {
+      "id": "G1_TENANCY",
+      "label": "PostgreSQL isolation and identity",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "db/migrations/0003_signed_context.sql",
+        "src/security/scoped-database.mjs",
+        "tests/integration/live-pool.test.mjs",
+        ".github/workflows/postgres-g1.yml",
+        "db/migration-lock.json",
+        "src/security/migration-chain-audit.mjs",
+        "scripts/verify-migration-chain.mjs",
+        "tests/unit/migration-chain-audit.test.mjs",
+        "docs/engineering/G1_P0B_MIGRATION_CHAIN_20261121.md",
+        "scripts/ci-migration-ledger.mjs",
+        "scripts/rehearse-real-migration-restart.mjs",
+        "tests/unit/ci-migration-ledger.test.mjs",
+        "docs/engineering/G1_P0B_ACTUAL_MIGRATION_LEDGER_20261121.md",
+        "db/security/production-migration-roles.sql",
+        "db/tests/least_privilege_migrator.sql",
+        "src/security/migration-role-policy.mjs",
+        "src/security/migration-release-attestation.mjs",
+        "scripts/migration-release-cli.mjs",
+        "tests/unit/migration-release-attestation.test.mjs",
+        "tests/unit/migration-role-policy.test.mjs",
+        "docs/engineering/G1_PRODUCTION_MIGRATION_SIGNING_CONTRACT_20261121.md",
+        "db/security/privileged-service-role-bootstrap.sql",
+        "db/security/verify-installed-migration-state.sql",
+        "src/security/legacy-role-reconciliation.mjs",
+        "scripts/rehearse-privileged-migration-reconciliation.mjs",
+        "scripts/rehearse-migration-signing-acceptance.mjs",
+        "docs/engineering/G1_PRIVILEGED_BOOTSTRAP_AND_SIGNING_ACCEPTANCE_20261121.md",
+        "docs/engineering/G1_INDEPENDENT_SIGNING_ACCEPTANCE_20261121.json",
+        "tests/unit/legacy-role-reconciliation.test.mjs",
+        "tests/unit/migration-signing-acceptance.test.mjs"
+      ],
+      "blocker": "A restricted non-superuser runner with 21 reference service roles and all 63 locked migrations is CI-verified. An isolated v62 to v63 cloned-database interruption/restart test is staged for exact-head qualification. Actual external owner and reviewer signatures, independent key custody/trust-policy pin, production migrator identity, production recovery witness, independently operated staging and real API load, DBA/security review, TLS/IdP, HA disaster recovery and commercial demand remain NOT VERIFIED. Production release approval denied."
+    },
+    {
+      "id": "G1_EVIDENCE",
+      "label": "Document custody and scanning",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "src/security/evidence-ingestion.mjs",
+        "src/security/evidence-recovery.mjs",
+        "tests/integration/real-clamd.test.mjs",
+        ".github/workflows/clamav-engine.yml"
+      ],
+      "blocker": "Production object storage, external retention custody, malicious-document assessment and real customer operation not evidenced."
+    },
+    {
+      "id": "G1_RUNTIME",
+      "label": "Application and mobile/browser experience",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "src/security/application-runtime.mjs",
+        "docs/engineering/G1_APPLICATION_RUNTIME.md",
+        ".github/workflows/browser-workspace.yml"
+      ],
+      "blocker": "Production deployment, complete product UI, customer usability and operational SLO testing outstanding."
+    },
+    {
+      "id": "G1_P0D_HANDOVER",
+      "label": "Portable offline buyer handover and real scoped evidence assembly",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "src/demo/buyer-portable-bundle.mjs",
+        "tests/unit/buyer-portable-bundle.test.mjs",
+        "tests/browser/offline-buyer-browser.test.mjs",
+        "tests/integration/live-requirement-graph.test.mjs",
+        "docs/engineering/G1_P0D_HANDOVER_OFFLINE_GATE_20261121.md",
+        ".github/workflows/buyer-bundle.yml"
+      ],
+      "blocker": "All six CI workflows passed on the preceding immutable baseline 86b9977f322761ba98beb5583e01e8573d793f9a (core, scoped PostgreSQL, Chromium/WebKit, antivirus, maximum recovery and synthetic buyer ZIP). Requalification is required after any source change; this does not verify physical iPhone operation, independent custody, external reviewer identities or actual buyer demand."
+    },
+    {
+      "id": "G1_WITNESS",
+      "label": "Independent immutable witness, signer and monotonic floor",
+      "status": "REFERENCE_ONLY",
+      "sources": [
+        "src/security/provider-witness-recovery-floor-authority.mjs",
+        "src/security/provider-witness-recovery-floor-publication.mjs",
+        "tests/unit/provider-witness-recovery-floor-authority.test.mjs",
+        "src/security/provider-witness-authority-key-schedule.mjs",
+        "tests/unit/provider-witness-authority-key-schedule.test.mjs",
+        "docs/engineering/G1_REVIEW_FLOOR_AUTHORITY_REFERENCE_20261121.md",
+        "src/security/provider-witness-authority-trust-policy.mjs",
+        "tests/unit/provider-witness-authority-trust-policy.test.mjs",
+        "docs/engineering/G1_P0A_REMOTE_AUTHORITY_CONTRACT_20261121.md",
+        "src/security/provider-witness-reference-atomic-floor-model.mjs",
+        "tests/unit/provider-witness-reference-atomic-floor-model.test.mjs",
+        "docs/engineering/G1_P0A_BUYER_ACCEPTANCE_REGISTER_20261121.json"
+      ],
+      "blocker": "An additional synchronous reference model tests single-process policy/CAS ordering, synthetic writer fencing, partition refusal and lost-ACK replay. Independently administered governance, external durable policy/floor high-water marks, actual atomic authority-side revocation+CAS, mutually authenticated multi-host fencing, independent time and hardware power-loss verification remain absent."
+    },
+    {
+      "id": "G1_BACKUP",
+      "label": "Production disaster recovery and capacity",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "src/security/encrypted-database-backup.mjs",
+        "tests/stress/maximum-recovery.test.mjs",
+        ".github/workflows/recovery-capacity.yml"
+      ],
+      "blocker": "Performance baseline on exact head, real power loss, offsite backups, replay and RTO/RPO observations not independently evidenced."
+    },
+    {
+      "id": "G2_G4",
+      "label": "Document intelligence, OCR, proof and export workflows",
+      "status": "PARTIAL_CI",
+      "sources": [
+        "src/security/ocr-preview.mjs",
+        "src/security/submission-package.mjs",
+        "docs/product/MASTER_BLUEPRINT.md"
+      ],
+      "blocker": "Full end-to-end workflows and all blueprint acceptance scenarios not yet demonstrated or independently benchmarked."
+    },
+    {
+      "id": "G0_G6_RELEASE",
+      "label": "Integrated release readiness and independent security signoff",
+      "status": "NOT_VERIFIED",
+      "sources": [
+        "docs/engineering/G1_ACCEPTANCE_REVIEW_20261121.md",
+        "docs/product/MASTER_BLUEPRINT.md"
+      ],
+      "blocker": "No independently signed G0–G6 acceptance record, release package, penetration test, SBOM and secure deployment evidence."
+    },
+    {
+      "id": "BUYER_IP",
+      "label": "Asset/IP and trademark due diligence",
+      "status": "NOT_CLEARED",
+      "sources": [
+        "README.md",
+        "docs/product/MASTER_BLUEPRINT.md",
+        "src/security/buyer-ip-inventory.mjs",
+        "tests/unit/buyer-ip-inventory.test.mjs",
+        "docs/engineering/G1_P0E_IP_DUE_DILIGENCE_20261121.md"
+      ],
+      "blocker": "Lockfile licence metadata and pinned action references now have a deterministic inventory, but licence texts, component obligations, external tools/transitive packages, contributors, source authorship, brand/trademark clearance, ownership and transferable title remain unverified. Legal/IP clearance must not be inferred from package hashes."
+    },
+    {
+      "id": "BUYER_DEMAND",
+      "label": "Validated buyer need, conversion and pricing",
+      "status": "NOT_VALIDATED",
+      "sources": [
+        "docs/product/MASTER_BLUEPRINT.md"
+      ],
+      "blocker": "No independent customer pilot, payment commitment, buyer offer or repeatable sales conversion verified."
+    }
+  ]
+}

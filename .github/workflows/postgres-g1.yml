@@ -4,6 +4,12 @@ on:
     branches: ["**"]
   pull_request:
     branches: [main]
+concurrency:
+  # A newer commit supersedes redundant checks on the same branch/PR.
+  # Final-head jobs retain every existing security and evidence assertion.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
@@ -27,6 +33,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: ci-only
       PGDATABASE: verivaro_test
+      VV_CI_PG_MIGRATOR: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -41,6 +48,35 @@ jobs:
           cp tests/integration/driver/package.json "$RUNNER_TEMP/vv-live-driver/"
           cp tests/integration/driver/package-lock.json "$RUNNER_TEMP/vv-live-driver/"
           npm ci --prefix "$RUNNER_TEMP/vv-live-driver" --ignore-scripts --no-audit --no-fund
+      - name: Reject missing, altered or reordered migrations before SQL runs
+        run: |
+          set -euo pipefail
+          node scripts/verify-migration-chain.mjs
+          node --test tests/unit/migration-chain-audit.test.mjs
+      - name: Enforce scoped migration role privileges on disposable PostgreSQL
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f db/tests/least_privilege_migrator.sql
+      - name: Reconcile 21 privileged roles and replay 63 real SQL migrations as restricted login
+        env:
+          VV_CI_ROLE_RECONCILE: '1'
+        run: |
+          set -euo pipefail
+          node scripts/rehearse-privileged-migration-reconciliation.mjs
+      - name: Rehearse disposable migration rollback and safe retry
+        env:
+          VV_CI_PG_REHEARSAL: '1'
+        run: |
+          set -euo pipefail
+          node scripts/rehearse-migration-recovery.mjs
+      - name: Initialise isolated tamper-detectable migration ledger
+        run: |
+          set -euo pipefail
+          node scripts/ci-migration-ledger.mjs init
+      - name: Rehearse actual SQL migration interruption and restart
+        run: |
+          set -euo pipefail
+          node scripts/rehearse-real-migration-restart.mjs
       - name: Apply schema and adversarial checks
         env:
           VV_CI_PG_CONTAINER: ${{ job.services.postgres.id }}
@@ -49,12 +85,12 @@ jobs:
           VV_RUNTIME_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_RUNTIME_PASSWORD"
           export VV_RUNTIME_PASSWORD
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0001_tenant_foundation.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0002_evidence_immutability.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0003_signed_context.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0004_project_access.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0005_identity_sessions.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0006_identity_lifecycle.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0001_tenant_foundation.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0002_evidence_immutability.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0003_signed_context.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0004_project_access.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0005_identity_sessions.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0006_identity_lifecycle.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/context_fixture.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/tenant_isolation.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/adversarial_permissions.sql
@@ -63,30 +99,31 @@ jobs:
           # Blocking regression: forged identity must never grant access.
           psql -X -v ON_ERROR_STOP=1 -f db/tests/identity_spoof_gate.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/signed_context_gate.sql
+          psql -X -v ON_ERROR_STOP=1 -f db/tests/context_key_rotation_gate.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/project_access_gate.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/runtime_dedicated_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-pool.test.mjs
           psql -X -v ON_ERROR_STOP=1 -f db/tests/identity_lifecycle_gate.sql
           # Test the preceding lifecycle migration before applying its stricter successor.
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0007_dual_recovery.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0007_dual_recovery.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/dual_recovery_gate.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0008_scoped_sharing.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0008_scoped_sharing.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/scoped_sharing_gate.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0009_share_generation.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0009_share_generation.sql
           psql -X -v ON_ERROR_STOP=1 -f db/tests/share_generation_gate.sql
           VV_SHARE_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_SHARE_PASSWORD"
           export VV_SHARE_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/share_gateway_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-share-download.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0010_recipient_shares.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0010_recipient_shares.sql
           VV_RECIPIENT_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_RECIPIENT_PASSWORD"
           export VV_RECIPIENT_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/recipient_gateway_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-recipient-download.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0011_distributed_admission.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0012_security_monitor.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0011_distributed_admission.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0012_security_monitor.sql
           VV_ADMISSION_PASSWORD="$(openssl rand -hex 32)"
           VV_ADMISSION_B_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_ADMISSION_PASSWORD"
@@ -95,8 +132,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f db/tests/admission_logins.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-distributed-admission.test.mjs
           psql -X -v ON_ERROR_STOP=1 -f db/tests/security_monitor_gate.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0013_monitor_dashboard.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0014_alert_outbox.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0013_monitor_dashboard.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0014_alert_outbox.sql
           VV_MONITOR_WORKER_PASSWORD="$(openssl rand -hex 32)"
           VV_MONITOR_READER_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_MONITOR_WORKER_PASSWORD"
@@ -111,23 +148,23 @@ jobs:
           export VV_ALERT_A_PASSWORD VV_ALERT_B_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/alert_logins.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-alert-outbox.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0015_restore_review.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0015_restore_review.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-service-login.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0016_provider_identity.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0016_provider_identity.sql
           VV_IDENTITY_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_IDENTITY_PASSWORD"
           export VV_IDENTITY_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/provider_identity_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-provider-identity.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0017_browser_auth.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0018_identity_lifecycle_events.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0017_browser_auth.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0018_identity_lifecycle_events.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-browser-auth.test.mjs
           VV_IDENTITY_EVENTS_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_IDENTITY_EVENTS_PASSWORD"
           export VV_IDENTITY_EVENTS_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/provider_event_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-provider-events.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0019_api_admission.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0019_api_admission.sql
           VV_API_A_PASSWORD="$(openssl rand -hex 32)"
           VV_API_B_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_API_A_PASSWORD"
@@ -135,76 +172,77 @@ jobs:
           export VV_API_A_PASSWORD VV_API_B_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/api_admission_logins.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-api-gateway.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0020_project_mutation.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0020_project_mutation.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-project-mutation.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0021_evidence_ingestion.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0021_evidence_ingestion.sql
           VV_INGEST_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_INGEST_PASSWORD"
           export VV_INGEST_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/ingestion_login.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0022_evidence_formats_quotas.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0022_evidence_formats_quotas.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-evidence-ingestion.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0023_evidence_retrieval.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0023_evidence_retrieval.sql
           VV_EVIDENCE_READER_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_EVIDENCE_READER_PASSWORD"
           export VV_EVIDENCE_READER_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/evidence_reader_login.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0024_evidence_attestation.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0024_evidence_attestation.sql
           VV_EVIDENCE_AUDITOR_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_EVIDENCE_AUDITOR_PASSWORD"
           export VV_EVIDENCE_AUDITOR_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/evidence_auditor_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-evidence-attestation.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0025_evidence_review_release.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0025_evidence_review_release.sql
           VV_RELEASE_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_RELEASE_PASSWORD"
           export VV_RELEASE_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/release_login.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0026_release_workspace.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0026_release_workspace.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-evidence-release.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0027_project_administration.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0028_recipient_workspace.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0029_project_lifecycle_report.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0030_bounded_evidence_listing.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0031_tenant_administration.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0027_project_administration.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0028_recipient_workspace.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0029_project_lifecycle_report.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0030_bounded_evidence_listing.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0031_tenant_administration.sql
           VV_TENANT_OPERATOR_PASSWORD="$(openssl rand -hex 32)"
           echo "::add-mask::$VV_TENANT_OPERATOR_PASSWORD"
           export VV_TENANT_OPERATOR_PASSWORD
           psql -X -v ON_ERROR_STOP=1 -f db/tests/tenant_operator_login.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-tenant-administration.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0032_custody_invitations.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0032_custody_invitations.sql
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-custody-invitations.test.mjs
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0033_requirement_graph.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0034_graph_workspace.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0035_contractiq_sources.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0036_rejection_preflight.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0037_submission_snapshots.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0038_requirement_dependencies.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0039_dependency_removals.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0040_prooflock_records.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0041_prooflock_capture.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0042_prooflock_insights.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0043_prooflock_recovery.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0044_financial_records.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0045_project_chronology.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0046_acknowledgements_tasks.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0047_customer_package_access.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0048_trustproof.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0049_export_templates.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0050_organisation_templates.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0051_lifecycle_archive.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0052_evidence_intelligence.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0053_document_conditions.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0054_batch_import_lineage.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0055_contractiq_obligation_lines.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0056_canonical_multipage_sources.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0057_manual_source_lines.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0058_office_evidence_formats.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0059_office_requirement_sources.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0060_ocr_requirement_sources.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0061_canonical_scanned_pdf.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0062_multipage_image_pdf.sql
-          psql -X -v ON_ERROR_STOP=1 -f db/migrations/0063_ocr_transcription_corrections.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0033_requirement_graph.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0034_graph_workspace.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0035_contractiq_sources.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0036_rejection_preflight.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0037_submission_snapshots.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0038_requirement_dependencies.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0039_dependency_removals.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0040_prooflock_records.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0041_prooflock_capture.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0042_prooflock_insights.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0043_prooflock_recovery.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0044_financial_records.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0045_project_chronology.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0046_acknowledgements_tasks.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0047_customer_package_access.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0048_trustproof.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0049_export_templates.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0050_organisation_templates.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0051_lifecycle_archive.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0052_evidence_intelligence.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0053_document_conditions.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0054_batch_import_lineage.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0055_contractiq_obligation_lines.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0056_canonical_multipage_sources.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0057_manual_source_lines.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0058_office_evidence_formats.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0059_office_requirement_sources.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0060_ocr_requirement_sources.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0061_canonical_scanned_pdf.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0062_multipage_image_pdf.sql
+          node scripts/ci-migration-ledger.mjs apply db/migrations/0063_ocr_transcription_corrections.sql
+          node scripts/ci-migration-ledger.mjs verify
           VV_LIVE_TEST=1 VV_TEST_DRIVER_DIR="$RUNNER_TEMP/vv-live-driver" node --test tests/integration/live-requirement-graph.test.mjs
           psql -X -v ON_ERROR_STOP=1 -f db/tests/full_security_gate.sql
           # Real encrypted logical backup and isolated recovery; no artifacts uploaded.
@@ -229,11 +267,66 @@ jobs:
           VV_RESTORE_APPROVED=1 VV_RESTORE_SPOOL="$backup_root/spool" node services/database-recovery/main.mjs restore "$backup_path" verivaro_restore_ci
           psql -X -v ON_ERROR_STOP=1 -d verivaro_restore_ci -f db/tests/restored_database_gate.sql
           psql -X -v ON_ERROR_STOP=1 -d verivaro_restore_ci -f db/tests/full_security_gate.sql
-          for table in verivaro.tenants verivaro.projects verivaro.evidence verivaro_private.security_incidents verivaro_private.download_leases verivaro_private.project_mutation_receipts verivaro_private.project_mutation_audit verivaro_private.evidence_objects verivaro_private.evidence_access_events verivaro_private.evidence_release_requests verivaro_private.evidence_release_reviews verivaro_private.evidence_release_receipts verivaro_private.project_admin_events verivaro_private.project_archive_receipts verivaro_private.tenant_admin_requests verivaro_private.tenant_transfer_acceptances verivaro_private.tenant_admin_receipts verivaro_private.archive_custody_handover verivaro_private.tenant_invitations verivaro_private.tenant_invitation_cancellations verivaro_private.requirement_versions verivaro_private.requirement_reviews verivaro_private.requirement_evidence_links verivaro_private.requirement_link_reviews verivaro_private.requirement_sources verivaro_private.submission_snapshots verivaro_private.submission_reviews verivaro_private.submission_authorizations verivaro_private.requirement_dependencies verivaro_private.requirement_dependency_reviews verivaro_private.requirement_dependency_removals verivaro_private.requirement_dependency_removal_reviews verivaro_private.prooflock_milestones verivaro_private.prooflock_windows verivaro_private.prooflock_window_reviews verivaro_private.prooflock_capture_receipts verivaro_private.prooflock_alert_policies verivaro_private.prooflock_recovery_proposals verivaro_private.prooflock_recovery_reviews verivaro_private.financial_records verivaro_private.financial_versions verivaro_private.financial_reviews verivaro_private.project_chronology verivaro_private.project_chronology_reviews verivaro_private.acknowledgement_grants verivaro_private.acknowledgement_revocations verivaro_private.acknowledgement_events verivaro_private.resolution_tasks verivaro_private.resolution_task_events verivaro_private.customer_package_grants verivaro_private.customer_package_revocations verivaro_private.customer_package_reads verivaro_private.trustproof_entries verivaro_private.export_template_versions verivaro_private.organisation_template_publications verivaro_private.organisation_template_imports verivaro_private.project_lifecycle_events verivaro_private.evidence_metadata_versions verivaro_private.evidence_metadata_reviews verivaro_private.requirement_document_conditions verivaro_private.evidence_import_lineage; do
-            source_hash="$(psql -X -At -c "SELECT md5(COALESCE(string_agg(row_to_json(t)::text, ',' ORDER BY row_to_json(t)::text),'')) FROM $table t")"
-            restored_hash="$(psql -X -At -d verivaro_restore_ci -c "SELECT md5(COALESCE(string_agg(row_to_json(t)::text, ',' ORDER BY row_to_json(t)::text),'')) FROM $table t")"
-            test "$source_hash" = "$restored_hash"
-          done
+          # Discover all migrated application tables; a new table must not bypass
+          # synthetic restore comparison merely because an allowlist was not updated.
+          table_query="SELECT format('%I.%I', n.nspname, c.relname) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname LIKE 'verivaro%' AND c.relkind IN ('r','p') ORDER BY 1"
+          source_tables="$(psql -X -v ON_ERROR_STOP=1 -At -c "$table_query" | LC_ALL=C sort)"
+          restored_tables="$(psql -X -v ON_ERROR_STOP=1 -At -d verivaro_restore_ci -c "$table_query" | LC_ALL=C sort)"
+          test -n "$source_tables"
+          # Quarantine intentionally creates these three restore-only tables. All
+          # original tables must survive, and no other new tables are permitted.
+          missing_tables="$(comm -23 <(printf '%s\n' "$source_tables") <(printf '%s\n' "$restored_tables"))"
+          added_tables="$(comm -13 <(printf '%s\n' "$source_tables") <(printf '%s\n' "$restored_tables"))"
+          expected_added="$(printf '%s\n' verivaro_private.restore_quarantine verivaro_private.restoration_reviews verivaro_private.restoration_evidence_receipt | LC_ALL=C sort)"
+          if test -n "$missing_tables" || test "$added_tables" != "$expected_added"; then
+            echo "::error::restore_catalog_inventory_mismatch"
+            printf 'missing_source_tables=%s\n' "$missing_tables"
+            printf 'unexpected_restored_tables=%s\n' "$added_tables"
+            exit 1
+          fi
+          table_count=0
+          skipped_quarantine_tables=0
+          while IFS= read -r table; do
+            test -n "$table"
+            # Quarantine revokes/rotates/clears precisely these stateful controls,
+            # including actor_share_generations via the disabled_actors INSERT trigger.
+            # Compare their post-restore invariants in restored_database_gate.sql,
+            # not raw row hashes. Future mutations must update this audited list.
+            case "$table" in
+              verivaro_private.identity_sessions|verivaro_private.identity_events|verivaro_private.disabled_actors|verivaro_private.actor_share_generations|verivaro_private.recovery_operators|verivaro_private.login_challenges|verivaro_private.browser_flows|verivaro_private.browser_sessions|verivaro_private.auth_telemetry|verivaro_private.api_rate_keys|verivaro_private.api_rate_state|verivaro_private.share_grants|verivaro_private.share_events|verivaro_private.released_exports|verivaro_private.context_key|verivaro_private.alert_outbox|verivaro_private.monitor_state)
+                skipped_quarantine_tables=$((skipped_quarantine_tables+1))
+                continue ;;
+            esac
+            source_hash="$(psql -X -v ON_ERROR_STOP=1 -At -c "SELECT md5(COALESCE(string_agg(row_to_json(t)::text, ',' ORDER BY row_to_json(t)::text),'')) FROM $table t")"
+            restored_hash="$(psql -X -v ON_ERROR_STOP=1 -At -d verivaro_restore_ci -c "SELECT md5(COALESCE(string_agg(row_to_json(t)::text, ',' ORDER BY row_to_json(t)::text),'')) FROM $table t")"
+            if test "$source_hash" != "$restored_hash"; then
+              echo "::error::restored_content_mismatch table=$table"
+              exit 1
+            fi
+            table_count=$((table_count+1))
+          done <<< "$source_tables"
+          # Verify sequence state as well as table rows. A restored identity
+          # sequence at the wrong position can produce duplicate IDs later.
+          # Identity-event and sharing-event sequences advance during quarantine;
+          # preserve and compare all other sequence positions and definitions.
+          sequence_query="SELECT format('%I.%I', n.nspname, c.relname) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname LIKE 'verivaro%' AND c.relkind='S' AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class owner_table ON owner_table.oid=d.refobjid JOIN pg_catalog.pg_namespace owner_ns ON owner_ns.oid=owner_table.relnamespace WHERE d.objid=c.oid AND d.deptype IN ('a','i') AND format('%I.%I', owner_ns.nspname, owner_table.relname) IN ('verivaro_private.identity_events','verivaro_private.share_events')) ORDER BY 1"
+          source_sequences="$(psql -X -v ON_ERROR_STOP=1 -At -c "$sequence_query")"
+          restored_sequences="$(psql -X -v ON_ERROR_STOP=1 -At -d verivaro_restore_ci -c "$sequence_query")"
+          test "$source_sequences" = "$restored_sequences"
+          sequence_count=0
+          if test -n "$source_sequences"; then
+            while IFS= read -r sequence; do
+              test -n "$sequence"
+              source_state="$(psql -X -v ON_ERROR_STOP=1 -At -c "SELECT last_value::text || ':' || is_called::text FROM $sequence")"
+              restored_state="$(psql -X -v ON_ERROR_STOP=1 -At -d verivaro_restore_ci -c "SELECT last_value::text || ':' || is_called::text FROM $sequence")"
+              if test "$source_state" != "$restored_state"; then
+                echo "::error::restored_sequence_mismatch sequence=$sequence"
+                exit 1
+              fi
+              sequence_count=$((sequence_count+1))
+            done <<< "$source_sequences"
+          fi
+          echo "restore_catalog_verified preserved_tables=$table_count quarantine_mutable_tables=$skipped_quarantine_tables sequences=$sequence_count"
           echo "isolated_restore_content_and_security_gate_passed"
           # Independent complete synthetic source using the real schema and real object bytes.
           createdb -w --template=template0 verivaro_bundle_ci

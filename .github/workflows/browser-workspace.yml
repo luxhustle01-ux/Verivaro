@@ -5,6 +5,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  # A newer commit supersedes redundant checks on the same branch/PR.
+  # Final-head jobs retain every existing security and evidence assertion.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
@@ -65,8 +71,15 @@ jobs:
           set -euo pipefail
           node "$RUNNER_TEMP/vv-browser/node_modules/playwright/cli.js" install ${{ matrix.engine }}
       - name: Exercise workspace in real browser engine
-        timeout-minutes: 5
+        timeout-minutes: 14
         env:
           VV_BROWSER_ENGINE: ${{ matrix.engine }}
         run: |
-          VV_BROWSER_DIR="$RUNNER_TEMP/vv-browser" node --test tests/browser/workspace-browser.test.mjs
+          set -euo pipefail
+          # Isolate each browser file to avoid competing WebKit/Chromium event
+          # loops and networkidle waits on a single constrained CI runner.
+          # A watchdog fails (never skips) a hung browser file with a clear limit.
+          for fixture in tests/browser/buyer-showcase-browser.test.mjs tests/browser/offline-buyer-browser.test.mjs tests/browser/workspace-browser.test.mjs; do
+            echo "browser_file=$fixture engine=$VV_BROWSER_ENGINE"
+            timeout --signal=TERM --kill-after=15s 270s env VV_BROWSER_DIR="$RUNNER_TEMP/vv-browser" node --experimental-strip-types --test-concurrency=1 --test "$fixture"
+          done

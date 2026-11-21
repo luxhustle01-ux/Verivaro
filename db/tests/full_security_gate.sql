@@ -67,3 +67,58 @@ BEGIN
  END LOOP;
  RAISE NOTICE 'full G1 role and definer audit passed (% roles)',role_count;
 END $audit$;
+
+-- The main EXECUTE allowlist is organised by routine *name*, not argument
+-- signature. Reject multiple service-executable overloads under one approved
+-- schema/name to stop a new signature inheriting an existing name's approval.
+DO $overloads$
+DECLARE duplicate record;
+BEGIN
+ SELECT r.rolname AS service_role,n.nspname AS routine_schema,p.proname AS routine_name,
+        count(*)::integer AS signatures
+ INTO duplicate
+ FROM pg_catalog.pg_roles r
+ CROSS JOIN pg_catalog.pg_proc p
+ JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+ WHERE r.rolname LIKE 'verivaro_%'
+   AND n.nspname LIKE 'verivaro%'
+   -- pgcrypto is installed under verivaro_private and legitimately overloads
+   -- names. A service lacking schema USAGE cannot invoke those routines.
+   AND n.nspname <> 'verivaro_private'
+   AND pg_catalog.has_schema_privilege(r.oid,n.oid,'USAGE')
+   AND p.prokind IN ('f','p')
+   AND pg_catalog.has_function_privilege(r.oid,p.oid,'EXECUTE')
+ GROUP BY r.rolname,n.nspname,p.proname
+ HAVING count(*)>1
+ LIMIT 1;
+ IF FOUND THEN
+   RAISE EXCEPTION 'ambiguous service function allowlist: % %.% (% executable signatures)',
+     duplicate.service_role,duplicate.routine_schema,duplicate.routine_name,duplicate.signatures;
+ END IF;
+ RAISE NOTICE 'approved_function_overload_gate_passed';
+END $overloads$;
+
+-- Disposable negative probe: verify the same privilege query would identify
+-- an additional grantable signature under an already allowed name. ROLLBACK
+-- leaves no callable function or role grant after the test.
+BEGIN;
+CREATE FUNCTION verivaro_verification.assessment(text) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog
+AS $probe$ SELECT '{}'::jsonb $probe$;
+REVOKE ALL ON FUNCTION verivaro_verification.assessment(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION verivaro_verification.assessment(text) TO verivaro_runtime;
+DO $negative$
+DECLARE signatures integer;
+BEGIN
+ SELECT count(*)::integer INTO signatures
+ FROM pg_catalog.pg_proc p
+ JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='verivaro_verification'
+   AND p.proname='assessment'
+   AND pg_catalog.has_function_privilege('verivaro_runtime',p.oid,'EXECUTE');
+ IF signatures<2 THEN
+   RAISE EXCEPTION 'synthetic function overload was not detected';
+ END IF;
+ RAISE NOTICE 'synthetic_unapproved_function_overload_detected';
+END $negative$;
+ROLLBACK;

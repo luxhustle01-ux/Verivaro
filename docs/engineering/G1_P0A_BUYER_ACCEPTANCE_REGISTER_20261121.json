@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "subject": "Verivaro P0-A independent recovery-floor authority acquisition test contract",
+  "reviewDate": "2026-11-21",
+  "assuranceClass": "REFERENCE_IN_MEMORY_AND_SINGLE_HOST_FIXTURES_ONLY",
+  "productReleaseApproved": false,
+  "productionAuthorityDeployed": false,
+  "independentCustodyProven": false,
+  "distributedCASProven": false,
+  "automaticRecoveryPermitted": false,
+  "auditedReferenceSource": [
+    "src/security/provider-witness-reference-atomic-floor-model.mjs",
+    "src/security/provider-witness-authority-trust-policy.mjs",
+    "src/security/provider-witness-recovery-floor-publication.mjs",
+    "tests/unit/provider-witness-reference-atomic-floor-model.test.mjs",
+    "tests/unit/provider-witness-authority-trust-policy.test.mjs"
+  ],
+  "requirements": [
+    {
+      "id": "P0A-01",
+      "name": "Independent governance and signer custody",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Pinned Ed25519 policy and authority key roles are checked locally",
+      "externalProof": "Buyer-controlled independent IdP, hardware/managed key lifecycle, separation-of-duties and revocation-authority audit"
+    },
+    {
+      "id": "P0A-02",
+      "name": "Atomic floor and revocation ordering",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Synchronous in-memory policy and floor transitions reject stale checkpoints",
+      "externalProof": "Authenticated authority persists floor, signer revocations and policy high-water mark in one tested linearizable commit"
+    },
+    {
+      "id": "P0A-03",
+      "name": "Cross-host write fencing",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Simulated writer epochs reject stale holders and parallel replay",
+      "externalProof": "Two or more separately hosted writers and quorum-fenced leases under actual competing processes and partitions"
+    },
+    {
+      "id": "P0A-04",
+      "name": "Partition and acknowledgement ambiguity",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Simulated pre-commit partitions reject requests and lost ACK cannot reset committed floor",
+      "externalProof": "Measured off-host network partition, lost-ACK, stale replica and reconnect behaviour without duplicate commits"
+    },
+    {
+      "id": "P0A-05",
+      "name": "Independent trusted time and receipt freshness",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Nonce-bound v2 receipts and bounded synthetic UTC clock values",
+      "externalProof": "Authenticated clock provenance, skew thresholds, monotonic time controls and verified expiry across hosts"
+    },
+    {
+      "id": "P0A-06",
+      "name": "Recovery after physical power loss",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Single-host process-exit and full-capacity fixture recovery checks",
+      "externalProof": "Power-cut tests on independent hardware, encrypted off-site backup restore with measured RTO/RPO and tamper logs"
+    },
+    {
+      "id": "P0A-07",
+      "name": "Independent monotonic rollback floor",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Local hash chain, pinned checkpoint and simulated revision monotonicity",
+      "externalProof": "Non-rollbackable separate operator storage of serial/head/logHash/policy checkpoint and adversarial restore drills"
+    },
+    {
+      "id": "P0A-08",
+      "name": "Acquisition handover and rights",
+      "status": "NOT_VERIFIED",
+      "simulatedEvidence": "Public code, synthetic export, evidence manifest and dependency metadata inventory",
+      "externalProof": "Independent source/IP assignment, licensing notices, buyer install, product usability assessment and validated willingness to pay"
+    }
+  ]
+}

@@ -60,3 +60,23 @@ test('session claim is mandatory and signature-bound',()=>{
  parts[1]=Buffer.from(JSON.stringify({...base,sid:'87654321-4321-4321-8321-cba987654321'})).toString('base64url');
  assert.throws(()=>verifyIdentityToken(parts.join('.'),options),/signature/);
 });
+
+function rawSignedToken(headerJson,claimsJson) {
+ const h=Buffer.from(headerJson).toString('base64url');
+ const p=Buffer.from(claimsJson).toString('base64url');
+ return h+'.'+p+'.'+sign('RSA-SHA256',Buffer.from(h+'.'+p),privateKey).toString('base64url');
+}
+test('rejects signed duplicate local JWT member names and escaped aliases',()=>{
+ const header=JSON.stringify({alg:'RS256',typ:'JWT'});
+ const claims=JSON.stringify(base);
+ const duplicateIssuer=claims.replace('"iss":',String.raw`"\u0069ss":"https://ambiguous.example.test","iss":`);
+ const duplicateExp=claims.replace('"exp":',String.raw`"exp":1,"exp":`);
+ const duplicateAlgorithm=header.replace('"alg":',String.raw`"alg":"none","alg":`);
+ const escapedType=header.replace('"typ":',String.raw`"\u0074yp":"non-jwt","typ":`);
+ for(const t of [
+  rawSignedToken(header,duplicateIssuer),
+  rawSignedToken(header,duplicateExp),
+  rawSignedToken(duplicateAlgorithm,claims),
+  rawSignedToken(escapedType,claims)
+ ]) assert.throws(()=>verifyIdentityToken(t,options),/duplicate claim/);
+});

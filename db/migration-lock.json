@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 1,
+  "manifestType": "VERIVARO_P0B_MIGRATION_CHAIN",
+  "baselineCommit": "687cd1ed24eaf084301208eaa6ab18146c34fdae",
+  "hashAlgorithm": "git-blob-sha1",
+  "sourceScope": "repository-migrations-only",
+  "productionMigrationApproved": false,
+  "independentlySigned": false,
+  "migrations": [
+    {
+      "number": 1,
+      "path": "db/migrations/0001_tenant_foundation.sql",
+      "gitBlobSha1": "533f77be06dd359f9818b81f20ebb2b2a8ffbaee",
+      "byteLength": 3130
+    },
+    {
+      "number": 2,
+      "path": "db/migrations/0002_evidence_immutability.sql",
+      "gitBlobSha1": "4d742722e6ebdaf18e25467b5a5e4ba28caf3631",
+      "byteLength": 1696
+    },
+    {
+      "number": 3,
+      "path": "db/migrations/0003_signed_context.sql",
+      "gitBlobSha1": "90438a0a81db5c6bd7daecec7d94f408ad4547d0",
+      "byteLength": 3207
+    },
+    {
+      "number": 4,
+      "path": "db/migrations/0004_project_access.sql",
+      "gitBlobSha1": "f1b9fe38d223ccca041b2aeb122e4aeec2b27169",
+      "byteLength": 3641
+    },
+    {
+      "number": 5,
+      "path": "db/migrations/0005_identity_sessions.sql",
+      "gitBlobSha1": "086d7d82c989bbc3c731b4b17b65529cca7823e8",
+      "byteLength": 3434
+    },
+    {
+      "number": 6,
+      "path": "db/migrations/0006_identity_lifecycle.sql",
+      "gitBlobSha1": "58e86b53e699e3990599cc3814bc7a6b8801b1a0",
+      "byteLength": 6095
+    },
+    {
+      "number": 7,
+      "path": "db/migrations/0007_dual_recovery.sql",
+      "gitBlobSha1": "7884bf24e5b1b3d1264189522a5932b14b535c66",
+      "byteLength": 6918
+    },
+    {
+      "number": 8,
+      "path": "db/migrations/0008_scoped_sharing.sql",
+      "gitBlobSha1": "e313bb12da05d37ea7419b6831911f516f4adfd1",
+      "byteLength": 8118
+    },
+    {
+      "number": 9,
+      "path": "db/migrations/0009_share_generation.sql",
+      "gitBlobSha1": "671ffee577f50e9adc407d49be0e5d474122a598",
+      "byteLength": 5823
+    },
+    {
+      "number": 10,
+      "path": "db/migrations/0010_recipient_shares.sql",
+      "gitBlobSha1": "ae7beb4137fec985b8b3c5a9dfd45f533f1d3d2e",
+      "byteLength": 6630
+    },
+    {
+      "number": 11,
+      "path": "db/migrations/0011_distributed_admission.sql",
+      "gitBlobSha1": "492ee14878cb3e35ec4767ce0929a2ab58c97fa5",
+      "byteLength": 5763
+    },
+    {
+      "number": 12,
+      "path": "db/migrations/0012_security_monitor.sql",
+      "gitBlobSha1": "b0baa60827381828d863856c8bd01549907acda0",
+      "byteLength": 9968
+    },
+    {
+      "number": 13,
+      "path": "db/migrations/0013_monitor_dashboard.sql",
+      "gitBlobSha1": "15363cea8d3165dbae52d1520a5c296876454a5d",
+      "byteLength": 1078
+    },
+    {
+      "number": 14,
+      "path": "db/migrations/0014_alert_outbox.sql",
+      "gitBlobSha1": "9e6db276ffd85bd23cd04bde894325c10a3af276",
+      "byteLength": 6657
+    },
+    {
+      "number": 15,
+      "path": "db/migrations/0015_restore_review.sql",
+      "gitBlobSha1": "e2fb811bd7f09e5968e2adb32229e8ca4da8586c",
+      "byteLength": 289
+    },
+    {
+      "number": 16,
+      "path": "db/migrations/0016_provider_identity.sql",
+      "gitBlobSha1": "32fd8ca5cedb9fb0dcb46439619fed530bec2eaf",
+      "byteLength": 6507
+    },
+    {
+      "number": 17,
+      "path": "db/migrations/0017_browser_auth.sql",
+      "gitBlobSha1": "542797733eef534f3d04bcd31fe06eedc5600e17",
+      "byteLength": 4611
+    },
+    {
+      "number": 18,
+      "path": "db/migrations/0018_identity_lifecycle_events.sql",
+      "gitBlobSha1": "667c5c6192675fab57b34dade47c47863287f582",
+      "byteLength": 9087
+    },
+    {
+      "number": 19,
+      "path": "db/migrations/0019_api_admission.sql",
+      "gitBlobSha1": "9308b0f75bcb17e0ac72faa47cf773359b051bd0",
+      "byteLength": 3405
+    },
+    {
+      "number": 20,
+      "path": "db/migrations/0020_project_mutation.sql",
+      "gitBlobSha1": "b7eea91e88a55149de56b165557e0a0673c233a0",
+      "byteLength": 6071
+    },
+    {
+      "number": 21,
+      "path": "db/migrations/0021_evidence_ingestion.sql",
+      "gitBlobSha1": "5be90ec722a79a194548658d71e4cef63caaff1b",
+      "byteLength": 5488
+    },
+    {
+      "number": 22,
+      "path": "db/migrations/0022_evidence_formats_quotas.sql",
+      "gitBlobSha1": "35840b712b745f84dbfea31c110d3e36eebf8925",
+      "byteLength": 3409
+    },
+    {
+      "number": 23,
+      "path": "db/migrations/0023_evidence_retrieval.sql",
+      "gitBlobSha1": "d4aab763c60dbef847f5eb09744fc3e815c3be66",
+      "byteLength": 3305
+    },
+    {
+      "number": 24,
+      "path": "db/migrations/0024_evidence_attestation.sql",
+      "gitBlobSha1": "18daab8881d723c9672977cec8068405ac439b5b",
+      "byteLength": 2136
+    },
+    {
+      "number": 25,
+      "path": "db/migrations/0025_evidence_review_release.sql",
+      "gitBlobSha1": "6214009023ec8a50451c72a72544806c40ffa50e",
+      "byteLength": 11248
+    },
+    {
+      "number": 26,
+      "path": "db/migrations/0026_release_workspace.sql",
+      "gitBlobSha1": "1dbb587295c5ae443f85ba927c0f241d585a9b05",
+      "byteLength": 6095
+    },
+    {
+      "number": 27,
+      "path": "db/migrations/0027_project_administration.sql",
+      "gitBlobSha1": "9de2f703905b039a7598ffd54e23dd71681e978c",
+      "byteLength": 8518
+    },
+    {
+      "number": 28,
+      "path": "db/migrations/0028_recipient_workspace.sql",
+      "gitBlobSha1": "a653a39cd41cdf01a11f0c32075524ebbd2cb5e6",
+      "byteLength": 4050
+    },
+    {
+      "number": 29,
+      "path": "db/migrations/0029_project_lifecycle_report.sql",
+      "gitBlobSha1": "00e146b3b8c65d8287dfe70ff46ec07fcff0d52e",
+      "byteLength": 13637
+    },
+    {
+      "number": 30,
+      "path": "db/migrations/0030_bounded_evidence_listing.sql",
+      "gitBlobSha1": "062f161f6df470b8a534abce6f1cd1d637a660c6",
+      "byteLength": 1733
+    },
+    {
+      "number": 31,
+      "path": "db/migrations/0031_tenant_administration.sql",
+      "gitBlobSha1": "00fa7f73afeac7fceca2b19aaeafae9119cdc974",
+      "byteLength": 24266
+    },
+    {
+      "number": 32,
+      "path": "db/migrations/0032_custody_invitations.sql",
+      "gitBlobSha1": "c3c1bcfc95206b4b035f5efb2006f38de51a5042",
+      "byteLength": 19386
+    },
+    {
+      "number": 33,
+      "path": "db/migrations/0033_requirement_graph.sql",
+      "gitBlobSha1": "c5ca2328aa33e8a1b5e5b72ee61fea363d91b6d1",
+      "byteLength": 15535
+    },
+    {
+      "number": 34,
+      "path": "db/migrations/0034_graph_workspace.sql",
+      "gitBlobSha1": "769f98c400fea669a7201b6dadbec6c7bdd1dad3",
+      "byteLength": 4233
+    },
+    {
+      "number": 35,
+      "path": "db/migrations/0035_contractiq_sources.sql",
+      "gitBlobSha1": "c09cbd8f3cb6d520b5e3030a06cffdce21ef17f6",
+      "byteLength": 8463
+    },
+    {
+      "number": 36,
+      "path": "db/migrations/0036_rejection_preflight.sql",
+      "gitBlobSha1": "06df604b43bd6aba63fcf026201a5d36e1a3d916",
+      "byteLength": 6090
+    },
+    {
+      "number": 37,
+      "path": "db/migrations/0037_submission_snapshots.sql",
+      "gitBlobSha1": "3b03583bc22e18e73f85ab64f004ad93b5a001db",
+      "byteLength": 15637
+    },
+    {
+      "number": 38,
+      "path": "db/migrations/0038_requirement_dependencies.sql",
+      "gitBlobSha1": "dc2e907114373f31c56ca8a08721f028d7ca7e47",
+      "byteLength": 12034
+    },
+    {
+      "number": 39,
+      "path": "db/migrations/0039_dependency_removals.sql",
+      "gitBlobSha1": "fb63835791b4b5fc3b57b92ece7df626f8e95072",
+      "byteLength": 13938
+    },
+    {
+      "number": 40,
+      "path": "db/migrations/0040_prooflock_records.sql",
+      "gitBlobSha1": "96567020299fcb4b30ed261ff43fd02ea5a50374",
+      "byteLength": 13629
+    },
+    {
+      "number": 41,
+      "path": "db/migrations/0041_prooflock_capture.sql",
+      "gitBlobSha1": "d7e54538b35371353491e164c3f5ea4500056565",
+      "byteLength": 6146
+    },
+    {
+      "number": 42,
+      "path": "db/migrations/0042_prooflock_insights.sql",
+      "gitBlobSha1": "6867e0afd810472a92b7b60ff72c3d8a38dcfee1",
+      "byteLength": 5466
+    },
+    {
+      "number": 43,
+      "path": "db/migrations/0043_prooflock_recovery.sql",
+      "gitBlobSha1": "3e30d79aed99b8a85ab3c914d289fdc974776cc7",
+      "byteLength": 10987
+    },
+    {
+      "number": 44,
+      "path": "db/migrations/0044_financial_records.sql",
+      "gitBlobSha1": "39cc2656722eb4c40e51bc8b3d29e3690834b8b2",
+      "byteLength": 14774
+    },
+    {
+      "number": 45,
+      "path": "db/migrations/0045_project_chronology.sql",
+      "gitBlobSha1": "271ada795b2d921966e7e5e7678b48a884e2130e",
+      "byteLength": 10024
+    },
+    {
+      "number": 46,
+      "path": "db/migrations/0046_acknowledgements_tasks.sql",
+      "gitBlobSha1": "8518bfdb0f6c30db82b053f9bfb2497eaab45dfa",
+      "byteLength": 18643
+    },
+    {
+      "number": 47,
+      "path": "db/migrations/0047_customer_package_access.sql",
+      "gitBlobSha1": "303249bfef52dd16dd20274e0153b8ea3d981f8f",
+      "byteLength": 16511
+    },
+    {
+      "number": 48,
+      "path": "db/migrations/0048_trustproof.sql",
+      "gitBlobSha1": "584b8d0124913a480642c674195a4b42734c129b",
+      "byteLength": 39329
+    },
+    {
+      "number": 49,
+      "path": "db/migrations/0049_export_templates.sql",
+      "gitBlobSha1": "25a74ef3e835e51fe79162fd245a7f12221d33e7",
+      "byteLength": 26964
+    },
+    {
+      "number": 50,
+      "path": "db/migrations/0050_organisation_templates.sql",
+      "gitBlobSha1": "b1ad6d9e0017ac7d61136e4f829f28cdd2d07a95",
+      "byteLength": 29115
+    },
+    {
+      "number": 51,
+      "path": "db/migrations/0051_lifecycle_archive.sql",
+      "gitBlobSha1": "e369231071cbaae7c3bcde843abdd00035bbea8a",
+      "byteLength": 34226
+    },
+    {
+      "number": 52,
+      "path": "db/migrations/0052_evidence_intelligence.sql",
+      "gitBlobSha1": "33e65cd724344adf23d9298fef9f425f36ecccfc",
+      "byteLength": 33893
+    },
+    {
+      "number": 53,
+      "path": "db/migrations/0053_document_conditions.sql",
+      "gitBlobSha1": "03c2364e995c187b828842df1358a383fa7455bb",
+      "byteLength": 37641
+    },
+    {
+      "number": 54,
+      "path": "db/migrations/0054_batch_import_lineage.sql",
+      "gitBlobSha1": "e71caeb1d10d6a7c6fc4b5135b6fac7fc938956e",
+      "byteLength": 27491
+    },
+    {
+      "number": 55,
+      "path": "db/migrations/0055_contractiq_obligation_lines.sql",
+      "gitBlobSha1": "9ab5c8aae8f4bfdb2979c9dd0f9f32d741ea582f",
+      "byteLength": 2940
+    },
+    {
+      "number": 56,
+      "path": "db/migrations/0056_canonical_multipage_sources.sql",
+      "gitBlobSha1": "e988ca2b16f5986273733564c40dd677cb712800",
+      "byteLength": 5139
+    },
+    {
+      "number": 57,
+      "path": "db/migrations/0057_manual_source_lines.sql",
+      "gitBlobSha1": "1b5796fe53d80448ffbe84ba0defe13e5de8246e",
+      "byteLength": 2998
+    },
+    {
+      "number": 58,
+      "path": "db/migrations/0058_office_evidence_formats.sql",
+      "gitBlobSha1": "231be6c25282b77dd87d8f2f62889a9249fb50ad",
+      "byteLength": 3011
+    },
+    {
+      "number": 59,
+      "path": "db/migrations/0059_office_requirement_sources.sql",
+      "gitBlobSha1": "88bdee8fa6d2fce94e61bda2a30f593339f3accc",
+      "byteLength": 26500
+    },
+    {
+      "number": 60,
+      "path": "db/migrations/0060_ocr_requirement_sources.sql",
+      "gitBlobSha1": "eed4c97c38273c99ad1276abe9b7a8a7bb5ee3d5",
+      "byteLength": 9058
+    },
+    {
+      "number": 61,
+      "path": "db/migrations/0061_canonical_scanned_pdf.sql",
+      "gitBlobSha1": "a6f2fbb0654f8df0a0ed11909d1f3a38514ed467",
+      "byteLength": 6852
+    },
+    {
+      "number": 62,
+      "path": "db/migrations/0062_multipage_image_pdf.sql",
+      "gitBlobSha1": "9e550d2e09c110aebaf408695b49657366c17c86",
+      "byteLength": 6868
+    },
+    {
+      "number": 63,
+      "path": "db/migrations/0063_ocr_transcription_corrections.sql",
+      "gitBlobSha1": "2e6f6d94644fdd9e12fe0df7ff70d9ac0e5cde03",
+      "byteLength": 45025
+    }
+  ]
+}

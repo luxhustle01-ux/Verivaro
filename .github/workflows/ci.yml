@@ -7,6 +7,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  # A newer commit supersedes redundant checks on the same branch/PR.
+  # Final-head jobs retain every existing security and evidence assertion.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -24,11 +30,24 @@ jobs:
           node-version: '22.16.0'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
+      - name: Bind unsigned release manifest to exact checkout (no trusted keys)
+        run: |
+          set -euo pipefail
+          node scripts/migration-release-cli.mjs draft 1 "$GITHUB_SHA" > "$RUNNER_TEMP/verivaro-unsigned-release.json"
+          node --input-type=module -e "import {readFileSync} from 'node:fs';const m=JSON.parse(readFileSync(process.argv[1],'utf8'));if(m.sourceCommit!==process.argv[2]||m.sequence!==1||m.productionApproved!==false||m.files.length!==80||!(/^[a-f0-9]{64}$/.test(m.ledgerHead)))process.exit(1)" "$RUNNER_TEMP/verivaro-unsigned-release.json" "$GITHUB_SHA"
+      - name: Rehearse two-role release-signature acceptance (ephemeral fixture keys)
+        env:
+          VV_CI_RELEASE_SIGNING: '1'
+        run: |
+          set -euo pipefail
+          node scripts/rehearse-migration-signing-acceptance.mjs
       - name: Check integration and browser fixture syntax
         run: |
           set -euo pipefail
           for f in tests/integration/*.mjs tests/browser/*.mjs; do node --check "$f"; done
       - run: npm run demo
+      - name: Reproducible synthetic buyer evidence lifecycle
+        run: npm run demo:buyer
       - name: Independent PDF rendering and ZIP verification
         run: |
           set -euo pipefail

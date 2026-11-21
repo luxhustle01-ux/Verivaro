@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
-import {randomUUID,randomBytes,sign} from 'node:crypto';
+import {randomUUID,randomBytes,sign,createHash} from 'node:crypto';
+import {createSubmissionPackage} from '../../src/security/submission-package.mjs';
+import {verifySubmissionPackage} from '../../src/security/submission-verifier.mjs';
 import {buildRejectionPreflight} from '../../src/security/rejection-preflight.mjs';
 import {compareSubmissionGraph} from '../../src/security/change-impact.mjs';
 import {local} from '../fixtures/provider-fixture.mjs';
@@ -92,10 +94,62 @@ test('persistent graph independently reviews exact versions and links; contradic
   const approvedPackage=await graph.readSubmission(as('owner',submission));assert.equal(approvedPackage.manifest,inspect.manifest);
   await assert.rejects(graph.readSubmission(as('author',submission)),ReleaseDenied);
   assert.equal((await graph.listSubmissions(as('owner')))[0].canDownload,true);
-  const second=link(bad);await graph.linkEvidence(as('author',second));
-  const linkedImpact=await impact();assert.equal(linkedImpact.changedCount,1);assert.ok(linkedImpact.changes[0].reasons.includes('evidence_links_changed'));assert.equal(linkedImpact.currentStatus,'blocked');
-  assert.equal((await status()).status,'blocked');
-  await assert.rejects(graph.readSubmission(as('owner',submission)),ReleaseConflict);
+  // Exercise the complete real-DB, encrypted-ingestion to authenticated
+  // two-actor review/owner-authorisation to byte-for-byte handover path.
+  // The fake browser showcase does NOT substitute for this acceptance gate.
+  const handoverReaderPool=new Pool({...cfg,user:'vv_ci_evidence_reader',password:process.env.VV_EVIDENCE_READER_PASSWORD});
+  const handoverReader=createEvidenceReader(handoverReaderPool,{
+   expectedLogin:'vv_ci_evidence_reader',verifier,contextKey,
+   readKey:async keyId=>{assert.equal(keyId,'graph-fixture');return graphKey;}
+  });
+  const assemble=createSubmissionPackage({workflow:graph,retrieve:handoverReader});
+  let handover,second;
+  try{
+   await assert.rejects(assemble(as('author',submission),{signal}),ReleaseDenied);
+   await assert.rejects(assemble(as('owner',{...submission,projectId:foreignProject}),{signal}),ReleaseDenied);
+   handover=await assemble(as('owner',submission),{signal});
+   const expectedPackageSha256=createHash('sha256').update(handover).digest('hex');
+   const verified=verifySubmissionPackage(handover,{
+    expectedPackageSha256,expectedManifestSha256:prepared.sha256
+   });
+   assert.equal(verified.integrityVerified,true);
+   assert.equal(verified.authenticityVerified,false);
+   assert.equal(verified.evidenceCount,1);
+   assert.equal(verified.evidenceBytes,Buffer.byteLength('Serial A123'));
+   assert.equal(verified.submissionId,submissionId);
+   const tampered=Buffer.from(handover);tampered[52]^=1;
+   assert.throws(()=>verifySubmissionPackage(tampered,{
+    expectedPackageSha256,expectedManifestSha256:prepared.sha256
+   }),/verification failed/);
+   tampered.fill(0);
+   console.log('real_scoped_handover_package_integrity_gate_passed');
+   // Cross-transaction TOCTOU: mutate the approved evidence graph only
+   // after the packager has retrieved the real encrypted bytes but before
+   // its final readSubmission authorisation check. No stale ZIP may escape.
+   let graphMutatedDuringRetrieval=false;
+   const racingPackager=createSubmissionPackage({
+    workflow:graph,
+    retrieve:async input=>{
+     const object=await handoverReader(input);
+     if(!graphMutatedDuringRetrieval){
+      second=link(bad);
+      await graph.linkEvidence(as('author',second));
+      graphMutatedDuringRetrieval=true;
+     }
+     return object;
+    }
+   });
+   await assert.rejects(racingPackager(as('owner',submission),{signal}),ReleaseConflict);
+   assert.equal(graphMutatedDuringRetrieval,true);
+   console.log('concurrent_graph_change_blocks_handover_gate_passed');
+   const linkedImpact=await impact();assert.equal(linkedImpact.changedCount,1);assert.ok(linkedImpact.changes[0].reasons.includes('evidence_links_changed'));assert.equal(linkedImpact.currentStatus,'blocked');
+   assert.equal((await status()).status,'blocked');
+   await assert.rejects(graph.readSubmission(as('owner',submission)),ReleaseConflict);
+   await assert.rejects(assemble(as('owner',submission),{signal}),ReleaseConflict);
+  }finally{
+   handover?.fill(0);
+   await handoverReaderPool.end();
+  }
   await graph.reviewLink(as('reviewer2',{linkId:second.linkId,decision:'fail',reason:'Conflicting identifier'}));
   const conflicting=await graph.assessment(as('owner'));assert.equal(conflicting.requirements[0].state,'conflict');assert.equal(conflicting.summary.blockers,1);assert.equal(buildRejectionPreflight(conflicting).issues[0].code,'CONFLICTING_EVIDENCE');
   const selfLink=link(self);await graph.linkEvidence(as('author',selfLink));

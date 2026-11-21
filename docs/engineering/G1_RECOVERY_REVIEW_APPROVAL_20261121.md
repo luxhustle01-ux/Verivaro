@@ -1,0 +1,13 @@
+# G1 two-reviewer recovery evidence approval — reference protocol
+
+**Status:** 21 November 2026. Offline synthetic cryptographic checks only. No separate approval service, identity authority, durable serial ledger, physical recovery procedure or production signer exists.
+
+`provider-witness-recovery-approval.mjs` provides a canonical `REVIEW_ONLY` statement, an evidence hash, and a strict Ed25519 verifier. The statement binds issuer, audience, random externally designated approval ID, monotonic review serial, evidence digest and limited UTC validity. The evidence digest binds signed journal count/head/checkpoint plus journal/publisher writer-lock states and pending publisher files taken from the read-only three-way inspector. Only `MANUAL_REVIEW_REQUIRED` and `automaticRecoveryPermitted:false` evidence may enter this protocol.
+
+Two **distinct independently pinned keys** with roles `owner` and `security` must sign exactly the same canonical review statement. The verifier checks signature encoding, public-key type, exact ID/scope, evidence digest, exact external approval serial, and a caller-provided trusted clock. Duplicate signatures, one key assuming two roles, forged keys, expired approval, evidence changes or conflicting serials reject.
+
+A verified result says `EVIDENCE_REVIEW_SIGNATURES_VERIFIED` but always retains `automaticRecoveryPermitted:false` and `manualReconciliationRequired:true`. It **does not** approve production repair, clear locks, lift quarantine, restore or roll back a journal, publish a freshness floor, or retry uncertain CAS. No such functions are exported.
+
+**Critical replay limitation:** The verifier receives `externalConsumedSerial` from a separately governed authoritative register; it does not persist or atomically consume serials. If a caller reuses an old register value, the same otherwise valid approval will verify again. An authenticated, durable, independently administered, atomic consume-and-fence workflow is mandatory before any operational approval or action. Clock trust and signer key custody also remain unverified. Synthetic tests intentionally demonstrate both replay rejection *when the register advances* and replay acceptance *if it does not*; do not misrepresent this as full one-time authorization.
+
+Release gates: independent policy/identity custody, multi-party approval of a concrete reviewed maintenance plan, externally durable atomic serial consumption, revocation and signer rotation, signed incident logs, fault-tolerant separation, real disaster-recovery rehearsal, external security assessment, and owner-controlled promotion of code. Keep PR #4 draft, unmerged, undeployed.

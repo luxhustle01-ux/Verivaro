@@ -27,3 +27,35 @@ test('local session minted only after database redemption, mapped actor never up
  await assert.rejects(gateway.exchange({idToken:token(c.nonce,{amr:['pwd']}),binding:c.binding}),/authentication denied/);
  assert.equal(calls.length,2);
 });
+
+test('asynchronous provider rejection never redeems a challenge and async verification is awaited',async()=>{
+ const actor=randomUUID(),calls=[],now=Math.floor(Date.now()/1000);
+ let release,verifyCalls=0;
+ const asyncProvider=Object.freeze({...provider,verify:async(jwt,t)=>{
+  verifyCalls++;
+  await new Promise(resolve=>{release=resolve;});
+  return provider.verify(jwt,t);
+ }});
+ const db={begin:async()=>true,redeem:async x=>{calls.push(x);return actor;},revoke:async()=>true};
+ const gw=createAuthenticationGateway({db,provider:asyncProvider,localIssuer:'urn:verivaro:local',localAudience:'api',privateKey:local.privateKey,maxConcurrentExchanges:1});
+ const c=await gw.begin();
+ const pending=gw.exchange({idToken:token(c.nonce),binding:c.binding});
+ assert.equal(verifyCalls,1);
+ assert.equal(calls.length,0);
+ // Pending remote verification consumes one permit; no extra database work.
+ await assert.rejects(gw.exchange({idToken:token(c.nonce),binding:c.binding}),/authentication denied/);
+ assert.equal(verifyCalls,1);
+ release();
+ const result=await pending;
+ assert.equal(verifyIdentityToken(result.token,{publicKey:local.publicKey,issuer:'urn:verivaro:local',audience:'api'}).actorId,actor);
+ assert.equal(calls.length,1);
+ const rejector=Object.freeze({...provider,verify:async()=>{throw Error('witness unavailable');}});
+ const denied=createAuthenticationGateway({db,provider:rejector,localIssuer:'urn:verivaro:local',localAudience:'api',privateKey:local.privateKey,maxConcurrentExchanges:1});
+ await assert.rejects(denied.exchange({idToken:token(c.nonce),binding:c.binding}),/authentication denied/);
+ assert.equal(calls.length,1);
+ const wrong=Object.freeze({...provider,verify:async()=>{throw Error('keyset rollback');}});
+ const failing=createAuthenticationGateway({db,provider:wrong,localIssuer:'urn:verivaro:local',localAudience:'api',privateKey:local.privateKey});
+ await assert.rejects(failing.exchange({idToken:token(c.nonce),binding:c.binding}),/authentication denied/);
+ assert.equal(calls.length,1);
+ for(const maxConcurrentExchanges of [0,33,1.5,NaN])assert.throws(()=>createAuthenticationGateway({db,provider:asyncProvider,localIssuer:'urn:verivaro:local',localAudience:'api',privateKey:local.privateKey,maxConcurrentExchanges}),/invalid authentication gateway/);
+});

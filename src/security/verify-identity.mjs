@@ -1,15 +1,9 @@
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
+import { decodeStrictJson } from './provider-identity.mjs';
 
-const decode = (part) => {
-  if (!/^[A-Za-z0-9_-]+$/.test(part) || part.length > 16384) throw new Error('invalid token encoding');
-  const raw = Buffer.from(part, 'base64url');
-  if (raw.toString('base64url') !== part) throw new Error('noncanonical token encoding');
-  const json = raw.toString('utf8');
-  if (Buffer.from(json, 'utf8').compare(raw) !== 0) throw new Error('invalid UTF-8 token encoding');
-  const value = JSON.parse(json);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid token object');
-  return value;
-};
+// The provider and locally issued identities must reject duplicate JSON member
+// names (including escaped aliases) before interpreting any signed claims.
+const decode = decodeStrictJson;
 
 export function verifyIdentityToken(token, { publicKey, issuer, audience, now = Math.floor(Date.now()/1000) }) {
   if (typeof token !== 'string' || token.length > 32768) throw new Error('invalid token');

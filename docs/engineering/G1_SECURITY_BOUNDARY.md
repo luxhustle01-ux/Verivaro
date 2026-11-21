@@ -1,23 +1,26 @@
-# G1 security boundary and outstanding risks
+# G1 PostgreSQL security boundary — current review
 
-Status: draft engineering design; NOT production approved.
+**Status:** Draft engineering implementation verified in disposable PostgreSQL CI. Not independently certified, production-deployed, or cleared for merge to main.
 
-## Verified in disposable PostgreSQL CI
-- PostgreSQL 16 applies migrations 0001 and 0002.
-- Tenant scope, revoked membership, actor/role evidence inserts, append-only trigger, concurrent independent sessions, and runtime role attribute checks execute in CI.
-- These are narrowly scoped integration tests, not a penetration test or a production security certification.
+## Historical defect and remediation
 
-## Critical design limitation: client-settable GUC identity
-The current RLS policies trust `verivaro.tenant_id` and `verivaro.actor_id` values set using `set_config`. Any role that can execute arbitrary SQL can set those custom variables. Therefore **these variables are not authentication**. An SQL injection or untrusted direct database connection could impersonate a different actor, defeating tenant isolation despite green RLS tests. No production deployment until a trusted authentication-to-database context boundary is implemented and adversarially tested. Consider trusted server-side signed session claims verified in a constrained database function, or a narrowly privileged SECURITY DEFINER context setter with cryptographic identity verification; neither is implemented yet. A setter that merely accepts caller-supplied UUIDs is insufficient.
+The original 18 November 2026 foundation trusted the caller-writable `verivaro.tenant_id` and `verivaro.actor_id` GUCs. That was an impersonation vulnerability, demonstrated by the historical failing identity-spoof gate. **Those GUCs are no longer an authentication source.** Migration `0003_signed_context.sql` replaced that design with an HMAC-verified, backend-PID- and transaction-ID-bound context; migration `0005_identity_sessions.sql` adds a registered, unrevoked, unexpired session identifier. Migrated RLS policies require the signed context and project membership. Old custom GUC settings do not independently grant authorisation.
 
-## Privilege boundary
-The current CI fixture deliberately grants runtime INSERT/UPDATE/DELETE on projects and evidence to exercise negative tests. Those are **test-only grants**, not recommended production grants. The production runtime role must be non-owner, NOBYPASSRLS, with least-privilege grants. Prefer distinct privileged migration and membership-administration roles; no direct membership writes from the runtime role. Enforce evidence immutability through privilege denial as well as triggers. Explicitly test TRUNCATE, COPY, role switching, transaction context cleanup, connection reuse and revocation.
+The service validates a trusted token and signs context for the actual acquired PostgreSQL transaction. The runtime SQL role has no access to the signing key or test-only signer. `src/security/scoped-database.mjs` uses a dedicated pooled login, fixed parameterised SQL, explicit READ COMMITTED, transaction-local signed scope, short timeouts, session cleanup and fail-closed lease destruction.
 
-## Open acceptance gates
-1. Trusted identity context with SQL-injection threat model and negative impersonation tests.
-2. Project-level authorisation, role grants and membership revocation under concurrency.
-3. Storage-level evidence immutability, integrity verification, provenance and audit lineage.
-4. Actual application connection-pool integration tests and failure-path cleanup.
-5. Independent security review, legal/privacy review and buyer acceptance.
+## CI evidence
 
-The draft PR must remain unmerged until the applicable gates pass and the owner authorises merge.
+- `db/tests/identity_spoof_gate.sql`, `signed_context_gate.sql`, `tenant_isolation.sql`, `adversarial_permissions.sql`, `concurrent_scopes.sh` test missing/forged scope, explicit signed tenant isolation, cross-tenant joins, revoked membership and concurrent operations.
+- `tests/integration/live-pool.test.mjs` uses the real PostgreSQL driver and tests physical pooled-connection reuse, cancellation, revocation, error discard and cross-tenant isolation.
+- `db/tests/full_security_gate.sql` checks forced RLS on five exposed core tables, least-privilege service roles, restricted SECURITY DEFINER functions and unexpected runtime grants. Its latest review-branch amendment also rejects service-executable function overloads and includes a rolled-back negative fixture.
+- `docs/engineering/G1_ACCEPTANCE_REVIEW_20261121.md` records exact-run evidence. Success on a synthetic CI branch is not a production audit.
+
+## Threat model and residual risks
+
+A database superuser, schema owner or compromised trusted signer is outside the unprivileged-runtime SQL threat model; FORCE RLS does not protect against those authorities. A signing-key or service-token compromise still requires incident response and key rotation. Identity-provider configuration, production certificate issuance, key custody, actual deployment grants, administrator access, operational revocation and load behaviour remain to be established independently.
+
+The original insecure migration exists in the historical forward-only chain: **all later migrations must be applied before any runtime role is permitted access.** Do not deploy or expose an intermediate 0001/0002 schema state. No customer data or production infrastructure has been verified here.
+
+## Acceptance and ownership
+
+Preserve drafts until exact-head PostgreSQL, core CI, browser and antivirus verification are green after the final change. Independent security review and G0–G6 release gates remain separate. No merge or deployment without owner approval.

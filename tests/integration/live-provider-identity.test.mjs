@@ -15,7 +15,8 @@ const cfg={host:process.env.PGHOST,port:Number(process.env.PGPORT),database:proc
 test('real MFA gateway, atomic nonce consumption, local RLS access, logout and binding disable',{timeout:30000},async()=>{
  const admin=new Pool({...cfg,user:process.env.PGUSER,password:process.env.PGPASSWORD}),ip=new Pool({...cfg,user:'vv_ci_identity',password:process.env.VV_IDENTITY_PASSWORD}),rp=new Pool({...cfg,user:'vv_ci_runtime',password:process.env.VV_RUNTIME_PASSWORD});
  const db=createIdentityDatabase(ip,{expectedLogin:'vv_ci_identity'});
- const gw=createAuthenticationGateway({db,provider,localIssuer:'urn:verivaro:local',localAudience:'api',privateKey:local.privateKey});
+ const asyncProvider=Object.freeze({...provider,verify:async (...args)=>provider.verify(...args)});
+ const gw=createAuthenticationGateway({db,provider:asyncProvider,localIssuer:'urn:verivaro:local',localAudience:'api',privateKey:local.privateKey});
  const tenant='11111111-1111-4111-8111-111111111111',project='33333333-3333-4333-8333-333333333333',actor=randomUUID();
  const localVerifier={publicKey:local.publicKey,issuer:'urn:verivaro:local',audience:'api'};
  try{

@@ -1,31 +1,11 @@
-# G1 signed transaction context — implementation increment
+# G1 signed transaction context — reviewed implementation
 
-Draft, pending exact-head CI and independent review. Migration 0003 supersedes the
-insecure policies from 0001/0002. All migrations must be applied before runtime
-access is granted. The old tenant/actor GUCs have no authorization effect.
+**Status:** Candidate code and synthetic CI tests exist. Independent production approval remains open.
 
-**Trust boundary:** the API verifies RS256 identity and signs a canonical context
-using a random 32-byte HMAC key. The database verification key is provisioned
-out of band by a privileged administrator into the private singleton table.
-Runtime SQL must not own schemas, tables or privileged functions, access the key,
-or receive migration/service credentials. CI's signing function is test-only.
-No default production key, secret, or runtime key provisioning endpoint exists.
+The `0003_signed_context.sql` migration supersedes the insecure caller-identity policies in migrations 0001/0002, and `0005_identity_sessions.sql` adds authenticated session registration, expiry and revocation. Applying the full migration chain before any runtime access is mandatory. Unsigned legacy `verivaro.tenant_id` and `verivaro.actor_id` settings do not authorise database operations.
 
-Acquire an exclusive pooled connection, BEGIN, obtain
-`SELECT pg_backend_pid() AS pid, pg_current_xact_id()::text AS xid`,
-then use the verified token and server-resolved tenant selector with
-`signDatabaseContext`. Set the result using parameterized
-`SELECT set_config('verivaro.signed_context', $1, true)`. Membership is checked
-by RLS. On error roll back; always release or discard the connection. The
-token is bound to backend and full transaction ID, and expires in <=45 seconds.
-The SQL validator rejects envelopes expiring more than 60 seconds ahead.
-The signer must receive the challenge only from the actual acquired connection.
-Do not log contexts or keys. A compromised trusted signer is outside this
-runtime SQL threat model. Keep the signer key inaccessible to arbitrary SQL.
+The trusted service verifies an identity token, including issuer and audience, then uses an out-of-band 32-byte HMAC key to create a signed short-lived context for the actual pooled connection's PostgreSQL backend PID and transaction ID. The database verifies this using its private key table and the live session record. No production default key or runtime SQL signing endpoint exists; `verivaro_private.ci_sign` is a disposable test fixture only. Do not log tokens, contexts or keys.
 
-Deployment requires granting execute on verivaro.bound_context() and the minimum
-approved table privileges to a non-owner runtime role. Key rotation presently
-invalidates outstanding envelopes; coordinated rotation and recovery, read-only
-transaction handling, revocation of identity tokens, project-level permissions,
-production grants, parameterized pool adapter, pool/cancellation tests and
-independent review are still outstanding. No claim that G1 or release is complete.
+The application acquires a dedicated least-privilege connection, clears prior session state, confirms login privileges, begins READ COMMITTED, sets statement/lock timeouts, obtains its transaction-bound challenge, signs the verified token and sets the signed context using a parameterised `set_config(...,true)` call. It checks membership through RLS and either commits and clears state or rolls back and destroys an unsafe lease. `tests/integration/live-pool.test.mjs` verifies real PostgreSQL driver pool reuse, cancellation, tenant isolation and session revocation with synthetic data; this supersedes earlier mock-only status language.
+
+Remaining: production key/HSM custody and rotation runbooks, real trusted provider configuration, supervised service transport, operational credential replacement, independent code/penetration review, scalability tests and release approval. A compromised signer or database administrator is outside the unprivileged SQL attack model. Passing CI is not production certification.

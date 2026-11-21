@@ -1,30 +1,28 @@
-# G1 trusted identity remediation — implementation contract
+# G1 trusted identity — historical defect and implementation contract
 
-**Status:** design contract, not implemented. Blocking test: `db/tests/identity_spoof_gate.sql`. No release while this test fails.
+**Review status:** Implemented as a candidate and exercised with synthetic real-PostgreSQL CI. Not a production identity certification or independent security assessment.
 
-## Confirmed defect
-Runtime role can set `verivaro.tenant_id` and `verivaro.actor_id` using arbitrary SQL, then read another tenant's project. Observed PostgreSQL CI failure: `SECURITY FAILURE: untrusted runtime SQL can impersonate tenant B (visible projects=1)` (run 44407117636, job 135165204800).
+## Historical finding
 
-## Required trust boundary
-1. Verify the incoming identity token **server-side**, including signature, expected issuer, audience, expiry, not-before, nonce/session binding where applicable, and revocation. Never accept client-supplied actor or tenant IDs as authority.
-2. Resolve authorised memberships from database records and apply project-level permission checks. A tenant selector is an input, not a proof of membership.
-3. Do **not** use freely settable PostgreSQL custom GUC values as authentication. Any database connection that can execute arbitrary SQL can set them.
-4. Use a cryptographically verified, transaction-bound database context with a verification key inaccessible to the runtime SQL role, or a different design with equally strong, independently demonstrated trust boundaries. A SECURITY DEFINER setter taking arbitrary UUIDs **does not fix** impersonation.
-5. Keep migration/administration roles separate from runtime roles; prohibit BYPASSRLS, table ownership, role escalation, direct membership administration, unsafe SECURITY DEFINER functions, and unrestricted search_path.
-6. All pooled requests must use explicit transactions, fail closed when context is missing, clear context on commit/rollback, and reject identity carryover on reused connections.
+The original RLS implementation accepted caller-supplied `verivaro.tenant_id` and `verivaro.actor_id` custom GUCs as identity. This could let arbitrary runtime SQL impersonate another tenant; the failing historical spoof test demonstrated that issue. The original run and its exception remain useful regression history, **not a description of the current branch's permissions**.
 
-## Acceptance tests (all mandatory)
-- A caller who controls arbitrary SQL **but lacks valid credentials for another actor** cannot obtain another actor's permissions by SET, set_config, forged claims, role SET, prepared statements, or context reuse.
-- Tampered signature, wrong issuer/audience, expired or revoked token, changed tenant/project, invalid membership, and stale permission are rejected.
-- Tenant A and B execute concurrently on separate sessions; pooled reuse across requests, transaction rollback, errors and cancellations cannot leak identity.
-- No UPDATE/DELETE/TRUNCATE of evidence by runtime; no privilege escalation through membership or role changes.
-- Tests must run against real PostgreSQL with the same runtime grants and trust-boundary implementation used by the application.
+## Implemented candidate boundary
 
-## Implementation sequencing
-A. Select and implement authenticated principal binding; document key ownership/rotation and database trust boundary.
-B. Replace the vulnerable RLS helper/policies and migration fixtures, preserving audit trail and forward-only migration semantics.
-C. Rewrite the spoof test to exercise the new trusted API without relying on a privileged test-only context; keep it blocking.
-D. Add integration tests with actual connection-pool client and malicious SQL paths.
-E. Run full CI and independent security review. Only then request merge approval.
+- `0003_signed_context.sql` introduces a cryptographically verified signed transaction envelope instead of trusting unsigned GUCs.
+- `0004_project_access.sql` enforces tenant/project memberships and explicit operation roles.
+- `0005_identity_sessions.sql` binds database authorisation to a registered unrevoked session. Later identity/provider and browser-auth migrations add issuer/subject binding, login challenges and revocation controls.
+- `src/security/sign-database-context.mjs`, `scoped-database.mjs` and `service-login.mjs` implement trusted token verification, bounded transaction-scoped use and dedicated service-role checks.
+- `db/tests/identity_spoof_gate.sql`, `signed_context_gate.sql`, `adversarial_permissions.sql`, `concurrent_scopes.sh` and `tests/integration/live-pool.test.mjs` exercise the boundary using an actual disposable PostgreSQL instance and real connection-pool driver.
 
-**No implementation claim:** this document specifies the remediation, not a security fix.
+## Mandatory security criteria
+
+1. Arbitrary SQL without another actor's validated token or signing key must not mint their context via custom GUCs, SET ROLE, replay, a different backend, another transaction or a stale session.
+2. Signed claims require issuer/audience/expiry checks, live session registration and project membership; access must cease on revocation.
+3. Every pooled request uses its own transaction and clears all session state; cancellation, rollback and error must dispose of unsafe leases.
+4. SQL functions with SECURITY DEFINER must have qualified, controlled search paths, no PUBLIC EXECUTE and reviewed per-service privileges. Adding an overload of a permitted function name must not bypass the allowlist.
+5. No runtime table ownership, BYPASSRLS, migration privileges, signing-key reads or direct membership administration.
+6. Production identity provider, certificate and signing-key lifecycle need supervised configuration and independent adversarial review before release.
+
+## Remaining independent acceptance
+
+Current synthetic CI establishes what those tests exercised, not all adversarial threat paths. Privileged DBA access, signer compromise, operational key escrow/rotation, live provider configuration, coordinated revocation, production grants, long-running concurrency, backup/PITR and incident drills remain outside this verification. Keep G1 draft until explicitly approved.

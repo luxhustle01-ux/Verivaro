@@ -15,10 +15,11 @@ const cfg={host:process.env.PGHOST,port:Number(process.env.PGPORT),database:proc
 test('real HTTP and PostgreSQL browser login, PKCE, CSRF, issuer, replay, opaque sessions and logout',{timeout:45000},async()=>{
  const admin=new Pool({...cfg,user:process.env.PGUSER,password:process.env.PGPASSWORD}),ip=new Pool({...cfg,user:'vv_ci_identity',password:process.env.VV_IDENTITY_PASSWORD});
  const db=createIdentityDatabase(ip,{expectedLogin:'vv_ci_identity'}),localVerifier={publicKey:local.publicKey,issuer:'urn:verivaro:local',audience:'api'};
- const gateway=createAuthenticationGateway({db,provider,localIssuer:localVerifier.issuer,localAudience:localVerifier.audience,privateKey:local.privateKey});
+ const asyncProvider=Object.freeze({...provider,verify:async (...args)=>provider.verify(...args)});
+ const gateway=createAuthenticationGateway({db,provider:asyncProvider,localIssuer:localVerifier.issuer,localAudience:localVerifier.audience,privateKey:local.privateKey});
  const origin='https://verivaro.example.invalid',actor=randomUUID(),tenant='11111111-1111-4111-8111-111111111111',externalSubject='browser-subject';
  const secret=randomBytes(32).toString('base64url'),key=randomBytes(32),codes=new Map();let calls=0,server;
- const browser=createBrowserAuthentication({db,gateway,provider,localVerifier,origin,authorizationEndpoint:issuer+'/authorize',tokenEndpoint:issuer+'/token',clientSecret:secret,key,requiredAcr:'fixture:mfa',fetcher:async(url,options)=>{
+ const browser=createBrowserAuthentication({db,gateway,provider:asyncProvider,localVerifier,origin,authorizationEndpoint:issuer+'/authorize',tokenEndpoint:issuer+'/token',clientSecret:secret,key,requiredAcr:'fixture:mfa',fetcher:async(url,options)=>{
   calls++;assert.equal(url,issuer+'/token');assert.equal(options.redirect,'error');assert.equal(options.headers.Authorization,'Basic '+Buffer.from(audience+':'+secret).toString('base64'));
   const p=options.body,c=codes.get(p.get('code'));assert.ok(c);codes.delete(p.get('code'));
   assert.equal(p.get('grant_type'),'authorization_code');assert.equal(p.get('redirect_uri'),origin+'/auth/callback');

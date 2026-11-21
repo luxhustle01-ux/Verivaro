@@ -1,25 +1,9 @@
-# G1 scoped database adapter
+# G1 scoped database adapter — implemented candidate and limits
 
-Candidate driver-neutral implementation. Only three read operations are exposed:
-project list, project lookup, and evidence metadata list. User-controlled SQL,
-role names, connection challenges and signing keys are not accepted through
-the operation interface. Queries use fixed statements and bind parameters.
-Listing is capped at 200 rows; pagination remains a product requirement.
+`src/security/scoped-database.mjs` exposes a fixed, allowlisted operation set (project list/lookup, project rename and evidence metadata listing); no arbitrary SQL, caller-provided role names, signing keys or connection challenges are accepted. Queries are parameterised. Project and evidence listings are bounded at 200 results; user-facing pagination and release UX require further design.
 
-A trusted service acquires an exclusive connection from a private pool,
-clears session state, rejects obviously privileged login attributes, switches
-to the least-privilege runtime role, begins READ COMMITTED, sets resource
-timeouts, obtains the database-generated challenge, verifies identity and signs
-a transaction-bound context, and checks live tenant membership. Project RLS
-remains mandatory. Success commits and clears the session. Any error fails
-closed; a failed/uncertain lease is destroyed. No raw driver errors are
-returned to callers.
+The trusted service acquires an exclusive connection from a dedicated pool, clears session state, rejects privileged login attributes, changes to `verivaro_runtime`, begins READ COMMITTED with bounded timeouts, obtains a fresh PID/XID challenge, verifies the user's token and signs transaction scope. It checks tenant membership and authorisation before execution. On success it commits and clears state; on any failure it rolls back where possible and destroys the unsafe lease. Generic internal errors and secrets are not exposed to callers.
 
-The pool and its login are deployment trust boundaries; this adapter cannot
-certify that the login lacks all indirect privileged memberships. The dedicated
-login must only be permitted to SET ROLE verivaro_runtime. No real driver is
-bundled. Existing unit tests use a strict mock client; they do not establish
-actual pooled driver behavior or cancellation semantics. Real PostgreSQL driver
-integration, live pool reuse, cancellation, token/session-specific revocation,
-share revocation, observability and independent testing remain release gates.
-No production infrastructure, real data, or paid dependencies are introduced.
+**Execution evidence:** `tests/integration/live-pool.test.mjs` uses an actual PostgreSQL `pg` pool on a disposable database. Tests cover the same physical backend used for two tenants, fake tenant and invalid-token rejection, physical connection replacement after cancellation, session-specific expiry/revocation and project membership withdrawal. `db/tests/concurrent_scopes.sh` exercises simultaneous tenant scopes. The newest G1 security acceptance review includes explicit JOIN/GUC impersonation tests. These statements supersede the earlier mock-only limitation.
+
+**Limitations:** CI is not production. An independent reviewer must validate actual deployed login group memberships, TLS and certificate trust, real provider/jwt settings, key custody, source authentication, incident handling, operational connection-pool settings and adverse load. A privileged DBA or compromised signer remains trusted. No claim of complete penetration testing or real-customer deployment.

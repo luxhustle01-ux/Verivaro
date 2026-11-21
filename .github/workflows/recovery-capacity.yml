@@ -1,10 +1,16 @@
 name: G1 maximum recovery capacity
 on:
   push:
-    branches: ["engineering/g1-postgres-tenant-foundation-20261119"]
+    branches: ["engineering/g1-postgres-tenant-foundation-20261119", "audit/g1-restore-catalog-verification-20261121"]
   pull_request:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  # A newer commit supersedes redundant checks on the same branch/PR.
+  # Final-head jobs retain every existing security and evidence assertion.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:

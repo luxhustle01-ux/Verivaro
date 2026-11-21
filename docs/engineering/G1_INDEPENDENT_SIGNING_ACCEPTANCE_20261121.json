@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "type": "VERIVARO_INDEPENDENT_MIGRATION_SIGNING_ACCEPTANCE",
+  "subject": "Verivaro G1 migration source and restricted bootstrap",
+  "releaseApprovalStatus": "NOT_APPROVED",
+  "productionReleaseApproved": false,
+  "witnessPersistedOutsideRepository": false,
+  "externallyPinnedTrustPolicy": false,
+  "signedReleaseProduced": false,
+  "privilegesProvisionedInProduction": false,
+  "independentReviewCompleted": false,
+  "approvalEvidence": [],
+  "requirements": [
+    {
+      "id": "SOURCE_BASELINE",
+      "state": "NOT_VERIFIED",
+      "required": "Reviewer independently matches release manifest exact Git SHA, 63 locked migrations, transformed SQL digests, signed controls and reproducible CI report"
+    },
+    {
+      "id": "ROLE_BOOTSTRAP",
+      "state": "NOT_VERIFIED",
+      "required": "Independent DBA approves cluster-global 21 roles, 3 segregated migration roles, dedicated DB CREATE scope, and role membership snapshots"
+    },
+    {
+      "id": "LEGACY_RECONCILIATION",
+      "state": "NOT_VERIFIED",
+      "required": "Fresh install or existing install selected explicitly; existing history requires exact 63 source digests and ledger head without invented backfill"
+    },
+    {
+      "id": "OWNER_SIGNING",
+      "state": "NOT_VERIFIED",
+      "required": "Named owner identity independently verified; owner Ed25519 key generated/stored outside GitHub and CI; signature bound to release sequence and SHA"
+    },
+    {
+      "id": "REVIEWER_SIGNING",
+      "state": "NOT_VERIFIED",
+      "required": "Independent human reviewer identity and conflict-of-interest assessed; distinct privately held Ed25519 signing key; valid signature"
+    },
+    {
+      "id": "TRUST_PIN",
+      "state": "NOT_VERIFIED",
+      "required": "Policy SHA-256 and minimum monotonic release sequence delivered through independently controlled channel, retained and checked for rollback"
+    },
+    {
+      "id": "WITNESS",
+      "state": "NOT_VERIFIED",
+      "required": "Outside-of-repository, independently controlled append-only ledger head receipt and monotonic release sequence witness, with tested rollback rejection"
+    },
+    {
+      "id": "DEPLOYMENT_CUSTODY",
+      "state": "NOT_VERIFIED",
+      "required": "Production identity, secrets, TLS, backup, credential rotation, rollback/DR and operator isolation independently reviewed"
+    },
+    {
+      "id": "SECURITY_REVIEW",
+      "state": "NOT_VERIFIED",
+      "required": "Independent security reviewer signs off on SQL parser limitations, statement transformations, grants, ledger ACL, restore and failure modes"
+    }
+  ],
+  "workflow": [
+    "Prepare an unsigned release manifest bound to exact immutable Git HEAD and SHA-256 digests",
+    "Review privileged changes and approve one-time cluster-global bootstrap separately",
+    "Exchange and independently pin public keys and minimum sequence floor outside the repository",
+    "Owner signs exact manifest bytes offline with held-private Ed25519 key",
+    "Independent reviewer verifies originals and signs identical manifest bytes with distinct key",
+    "Verify exact signatures, policy pin, floor and source bytes using offline verifier",
+    "Independent custodian publishes monotonic witness and checks ledger head, DB identity and nonce",
+    "DBA obtains explicit change approval for any privileged provisioning; never automatically upgrade",
+    "Collect signed evidence, negative test results, restored DB outcome and final independent acceptance"
+  ],
+  "stagingSimulation": {
+    "sourceSchemaVersion": 62,
+    "targetSchemaVersion": 63,
+    "usesRealLockedMigrationSql": true,
+    "isolatedPostgreSQL16": true,
+    "cloneWithSyntheticApplicationRecord": true,
+    "backendInterruptionBeforeCommit": true,
+    "retryAndReplayRequired": true,
+    "productionEquivalent": false,
+    "independentOperatorApproved": false,
+    "externallySigned": false,
+    "lastVerifiedCommit": null,
+    "verificationState": "PENDING_EXACT_SHA_CI"
+  }
+}

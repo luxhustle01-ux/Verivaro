@@ -1,0 +1,36 @@
+# G1 file-backed floor authority — reference trust boundary
+
+**21 November 2026 — single-host synthetic reference only.** No separately administered signer, external service, consensus cluster, key vault, trusted hardware, network endpoint or operational recovery authority has been deployed.
+
+The new `src/security/provider-witness-recovery-floor-authority.mjs` implements the existing signed `authority.read` / atomic-style `authority.compareAndSwap` publication interface with a private, canonical, append-only, hash-chained file and an exclusive single-host writer lock. The genesis helper provisions test fixtures. Startup requires a **separately supplied exact** `trustedAuthorityState={serial,headHash,logHash}` matching the complete authority log before acquiring its lock. The `logHash` authenticates the authority publication history, while `headHash` identifies the consumed-review register head. A rollback of one without the independently retained other is rejected.
+
+Each CAS independently verifies both distinct custodian Ed25519 signatures, the complete consumed-review ledger, exact old/new serial and hash, matching approval/evidence IDs, publication validity window and unique publication ID. Conflicts and bad proposals are rejected before writing. An eligible transition is appended and fsynced under a single private file lock and verified again. Only then is an authority-signed Ed25519 head receipt returned. The signer is an **injected capability**, not a production independent key service. Read receipts are signed and checked against a separately supplied authority public key, with bounded signer deadlines and abort propagation.
+
+An uncertain file write, remote acknowledgement, failed signature, timeout, path swap, orphan file or interrupted process permanently faults its instance and retains its writer lock. A reference test exits a real child Node process after fsync, before the acknowledgement, preserving the ambiguous entry and the lock. No lock is automatically removed following uncertainty. Neither signed receipt nor an apparent post-crash file establishes physical power-loss durability.
+
+**Adversarial qualification** uses synthetic keys and temporary directories to exercise the real publication gate and file-backed authority, 16 competing CAS requests, competing gate clients, stale independent startup floor, tampering/truncation, malformed and signed-but-incorrect proposals, child-process crash, late signer result, simulated partitions before CAS and after a committed CAS with its acknowledgement lost, and symlink/orphan protections. These are *single-process or single-host reference tests*, not genuine network partitions or multi-host quorum/fencing.
+
+**Production-blocking limitations:** A privileged operator can roll back the file and locally supplied trusted state together; app-controlled private keys cannot replace independent custody. Local `O_EXCL` locks cannot fence workers on other hosts and cannot guarantee distributed linearizability. This design has no independent replicated state, transport authentication, remote quorum/lease, key rotation/revocation authority, monotonic floor publication, off-site backup, verified power-cycle semantics, or security assessment. The independent authority must be implemented and operated in a genuinely separate trust domain, with verified atomic conditional writes and consensus/fencing before making production security claims.
+
+The authority and gate deliberately expose **REVIEW_ONLY** floor publication. They never authorise automatic recovery, lock removal, repair, deployment or an external transaction. PR #4 remains draft, unmerged and undeployed; no spending or external infrastructure is required by this reference test.
+
+
+## Signed receipt v2 — breaking authority interface
+
+The authority now requires `read(scope,{requestNonce,signal})` and `compareAndSwap({...,requestNonce},{signal})`; a missing, malformed or noncanonical request nonce is rejected before a write. For each request it issues an Ed25519 signed v2 receipt containing the exact nonce, issuedAt and a 10-second expiresAt (configurable for synthetic tests within 25–30,000 ms). It verifies its own signer response against the challenge and time window before returning. The gate checks a distinct randomly generated nonce per interaction and rejects v1 responses.
+
+This protocol is **reference-only**, and the injected system clock is not an independent trusted-time service. Production adapters and protocol migration must be reviewed together rather than automatically falling back to legacy v1 receipts.
+
+
+## P0-A serial-bound authority signer rotation (reference only)
+
+A caller may replace the single trusted authority Ed25519 key with a **separately pinned**, immutable `trustedAuthorityKeySchedule` created by `createTrustedRecoveryFloorAuthorityKeySchedule`. Each epoch declares its first and last permitted **consumption-floor serial**, and SHA-256 SPKI key fingerprint. Epochs must start at serial zero, be contiguous, non-overlapping, contain distinct Ed25519 public keys, and end with a single open-ended key. No receipt chooses its own key, and passing both the old `trustedAuthorityKey` and a schedule is rejected. Single-key test fixtures continue to use the original API.
+
+The verifier chooses the exact public key **from the authenticated receipt's signed serial** and pinned schedule, then checks the Ed25519 signature, issuer, audience, exact request nonce and freshness. After advancing from serial 6 to 7, a response signed with the old serial-6 key is rejected even if its nonce, time and digest are valid. The real file-backed reference authority checks its own signer output and faults permanently (preserving its forensic lock) if the post-CAS acknowledgement is signed by a retired key. A separate test exercises successful rollover through the real on-disk CAS and gate.
+
+**Unresolved:** A key schedule delivered from, modified by, or rolled back with the same compromised authority host is not independent trust. This is a reference contract, not a remotely governed rotation or emergency revocation service. The new schedule does **not** address compromise while the current key is valid at a single serial; it requires externally governed floor advancement/policy replacement and separately protected high-water marks. No network separation, HSM, remote distributed CAS, independent secure clock or real revocation operation was deployed.
+
+
+## Separately signed policy revision and revocation checks
+
+The [P0-A remote-authority contract](G1_P0A_REMOTE_AUTHORITY_CONTRACT_20261121.md) adds an **opaque verified trust policy** with a governance signer distinct from all floor receipt signers. It pins a canonical SHA-256 policy digest and independent revision, binds an exact authority key schedule, limits minimum acceptable floor state and can emergency-revoke a signer at the current serial. The publication gate requires a separately supplied checkpoint reader and rechecks it before/after signed reads and after publication. A mismatch permanently faults the gate, including after a remotely committed but unacknowledgeable CAS. This does **not** provide actual remote storage, signer separation or distributed atomicity; production revocation must be part of the same authority-side ordering decision as CAS.

@@ -83,7 +83,7 @@ export function createBrowserAuthentication({db,gateway,provider,localVerifier,o
     const upstream=await fetcher(token.href,{method:'POST',redirect:'error',signal:AbortSignal.timeout(5000),headers:{'Content-Type':'application/x-www-form-urlencoded',Authorization:'Basic '+credential,Accept:'application/json'},body});
     const idToken=await boundedJson(upstream);
     // Check exact nonce before redeeming any challenge.
-    if(provider.verify(idToken,now()).nonce!==c.nonce)throw Error('callback denied');
+    if((await provider.verify(idToken,now())).nonce!==c.nonce)throw Error('callback denied');
     const result=await gateway.exchange({idToken,binding:c.binding});
     const p=verifyIdentityToken(result.token,{...localVerifier,now:now()}),h=random();
     try{if(!await db.storeBrowserSession(digestOpaque(h),p.sessionId,seal({token:result.token},'session',h)))throw Error('session unavailable');}
