@@ -79,6 +79,33 @@ test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential r
   await rejectDirectGrant(
    "ALTER DATABASE verivaro_test SET work_mem = '16MB'",
    'ALTER DATABASE verivaro_test RESET work_mem');
+  // A credential replacement must satisfy the full admission catalogue
+  // policy, not a shorter retirement-only subset.
+  await rejectDirectGrant(
+   'GRANT SET ON PARAMETER session_replication_role TO vv_ci_tls_new',
+   'REVOKE SET ON PARAMETER session_replication_role FROM vv_ci_tls_new');
+  await rejectDirectGrant(
+   'GRANT EXECUTE ON FUNCTION pg_catalog.pg_backend_pid() TO vv_ci_tls_new',
+   'REVOKE EXECUTE ON FUNCTION pg_catalog.pg_backend_pid() FROM vv_ci_tls_new');
+  await rejectDirectGrant(
+   'GRANT CREATE ON DATABASE verivaro_test TO verivaro_monitor_reader',
+   'REVOKE CREATE ON DATABASE verivaro_test FROM verivaro_monitor_reader');
+  await rejectDirectGrant(
+   'GRANT SET ON PARAMETER session_replication_role TO verivaro_monitor_reader',
+   'REVOKE SET ON PARAMETER session_replication_role FROM verivaro_monitor_reader');
+  // Ownership outside the connected database is also disqualifying.
+  await admin.query('CREATE DATABASE vv_ci_tls_owned_db OWNER vv_ci_tls_new');
+  try{
+   const c=await admin.connect();
+   try{
+    await assert.rejects(
+     retireServiceCredential(c,{role,oldLogin,newLogin,confirm:oldLogin}),
+     /credential retirement failed/);
+   }finally{c.release(true);}
+   assert.equal((await oldPool.query('SELECT 1 AS ok')).rows[0].ok,1);
+  }finally{await admin.query('DROP DATABASE vv_ci_tls_owned_db');}
+  assert.ok((await replacement.snapshot()).health);
+
   held=await oldPool.connect();held.on('error',()=>{});
   await held.query('SET ROLE verivaro_monitor_reader');
   const pid=held.processID;
