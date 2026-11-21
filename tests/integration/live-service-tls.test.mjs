@@ -68,6 +68,17 @@ test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential r
   await rejectDirectGrant(
    'ALTER DEFAULT PRIVILEGES IN SCHEMA verivaro_private GRANT SELECT ON TABLES TO vv_ci_tls_new',
    'ALTER DEFAULT PRIVILEGES IN SCHEMA verivaro_private REVOKE SELECT ON TABLES FROM vv_ci_tls_new');
+  // Both the replacement and its group must be free of persistent startup
+  // overrides before the old authenticated identity can be retired.
+  await rejectDirectGrant(
+   'ALTER ROLE vv_ci_tls_new SET search_path TO public',
+   'ALTER ROLE vv_ci_tls_new RESET search_path');
+  await rejectDirectGrant(
+   "ALTER ROLE verivaro_monitor_reader SET statement_timeout = '10s'",
+   'ALTER ROLE verivaro_monitor_reader RESET statement_timeout');
+  await rejectDirectGrant(
+   "ALTER DATABASE verivaro_test SET work_mem = '16MB'",
+   'ALTER DATABASE verivaro_test RESET work_mem');
   held=await oldPool.connect();held.on('error',()=>{});
   await held.query('SET ROLE verivaro_monitor_reader');
   const pid=held.processID;
