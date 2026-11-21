@@ -22,6 +22,25 @@ test('live dedicated service identity rejects indirect, direct and administrativ
  try{
   await check();
   await assert.rejects(check('vv_ci_admission_b'));await assert.rejects(check(login,'verivaro_alert_sender'));
+  // Persistent startup settings are invisible to ordinary membership/ACL
+  // checks. Refuse role-specific and database-scoped overrides regardless
+  // of whether the GUC is innocuous: no hidden per-login defaults.
+  await rejectAfter('ALTER ROLE vv_ci_admission_a SET search_path TO public',
+    'ALTER ROLE vv_ci_admission_a RESET search_path');
+  await rejectAfter("ALTER ROLE vv_ci_admission_a IN DATABASE verivaro_test SET work_mem = '16MB'",
+    'ALTER ROLE vv_ci_admission_a IN DATABASE verivaro_test RESET work_mem');
+  await rejectAfter("ALTER ROLE verivaro_admission_service SET statement_timeout = '10s'",
+    'ALTER ROLE verivaro_admission_service RESET statement_timeout');
+  // An already-switched session must not pass as the authenticated login,
+  // even if the target role is the otherwise approved service group.
+  const switched=await pool.connect();
+  try{
+   await switched.query('DISCARD ALL');
+   await switched.query('SET ROLE verivaro_admission_service');
+   await assert.rejects(assertServiceLogin(switched,role,login),/unsafe service login/);
+   await switched.query('RESET ROLE');
+   await assertServiceLogin(switched,role,login);
+  }finally{switched.release(true);}
   await rejectAfter('GRANT pg_read_all_data TO vv_ci_admission_a','REVOKE pg_read_all_data FROM vv_ci_admission_a');
   await rejectAfter('GRANT verivaro_monitor_reader TO vv_ci_admission_a','REVOKE verivaro_monitor_reader FROM vv_ci_admission_a');
   await rejectAfter('GRANT USAGE ON SCHEMA verivaro_private TO vv_ci_admission_a','REVOKE USAGE ON SCHEMA verivaro_private FROM vv_ci_admission_a');
