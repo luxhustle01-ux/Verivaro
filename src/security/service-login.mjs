@@ -7,14 +7,10 @@ const name=/^[a-z][a-z0-9_]{0,62}$/;
 export function validateServiceIdentity(role,expectedLogin){
  if(!roles.has(role)||(typeof expectedLogin!=='string'||!name.test(expectedLogin)||expectedLogin===role||expectedLogin.startsWith('pg_')||expectedLogin.startsWith('verivaro_')))throw Error('invalid service identity configuration');
 }
-const CHECK=String.raw`SELECT
- l.rolname::text AS login_name,
- (
- l.rolsuper OR l.rolbypassrls OR l.rolcreaterole OR l.rolcreatedb OR l.rolreplication OR l.rolinherit OR NOT l.rolcanlogin
- -- A reused connection must be in its original authenticated login context;
- -- an already-activated SET ROLE is not an admissible checkout state.
- OR current_user<>session_user
- OR (l.rolvaliduntil IS NOT NULL AND l.rolvaliduntil<=clock_timestamp())
+// One shared catalogue policy protects both admission and credential retirement.
+// l = dedicated LOGIN role; g = approved NOLOGIN service group.
+// Session impersonation and credential expiry remain context-specific guards.
+export const SERVICE_IDENTITY_UNSAFE=String.raw` l.rolsuper OR l.rolbypassrls OR l.rolcreaterole OR l.rolcreatedb OR l.rolreplication OR l.rolinherit OR NOT l.rolcanlogin
  OR g.rolsuper OR g.rolbypassrls OR g.rolcreaterole OR g.rolcreatedb OR g.rolreplication OR g.rolinherit
  -- No dedicated login/service-group startup GUC may silently alter session
  -- policy. Includes both ALTER ROLE SET and ALTER ROLE IN DATABASE SET.
@@ -106,7 +102,15 @@ const CHECK=String.raw`SELECT
     CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
     WHERE n.nspname LIKE 'verivaro%' AND (p.proowner=l.oid OR a.grantee=l.oid))
  ))
- OR (l.rolname::text<>$2 OR l.oid=g.oid OR g.rolcanlogin)
+ OR l.oid=g.oid OR g.rolcanlogin`;
+const CHECK=String.raw`SELECT
+ l.rolname::text AS login_name,
+ (
+  (${SERVICE_IDENTITY_UNSAFE})
+  -- A reused connection already SET ROLE'd to another identity is unsafe.
+  OR current_user<>session_user
+  OR (l.rolvaliduntil IS NOT NULL AND l.rolvaliduntil<=clock_timestamp())
+  OR l.rolname::text<>$2
  ) AS privileged
  FROM pg_catalog.pg_roles l CROSS JOIN pg_catalog.pg_roles g
  WHERE l.rolname=session_user AND g.rolname::text=$1`;
