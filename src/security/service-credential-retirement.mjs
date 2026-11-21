@@ -20,6 +20,14 @@ export async function retireServiceCredential(client,{role,oldLogin,newLogin,con
     AND (l.rolname::text<>$2 OR l.rolvaliduntil IS NULL OR l.rolvaliduntil>clock_timestamp())
     AND NOT pg_catalog.has_database_privilege(l.oid,current_database(),'CREATE')
     AND NOT EXISTS(
+      -- Do not retire a known-good login in favour of an identity with hidden
+      -- role / group startup settings or database-wide configuration drift.
+      SELECT 1 FROM pg_catalog.pg_db_role_setting s
+      WHERE s.setrole IN (l.oid,g.oid)
+        OR (s.setrole=0 AND s.setdatabase=(
+          SELECT d.oid FROM pg_catalog.pg_database d
+          WHERE d.datname=current_database())))
+    AND NOT EXISTS(
       SELECT 1 FROM pg_catalog.pg_namespace n
       WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'
         AND pg_catalog.has_schema_privilege(l.oid,n.oid,'CREATE'))
