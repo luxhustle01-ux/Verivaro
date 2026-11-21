@@ -18,9 +18,14 @@ const CHECK=String.raw`SELECT
  OR g.rolsuper OR g.rolbypassrls OR g.rolcreaterole OR g.rolcreatedb OR g.rolreplication OR g.rolinherit
  -- No dedicated login/service-group startup GUC may silently alter session
  -- policy. Includes both ALTER ROLE SET and ALTER ROLE IN DATABASE SET.
+ -- Also deny ALTER DATABASE SET defaults on the connected database:
+ -- unlike role-specific settings, these appear with setrole=0.
  -- This is a strict zero-overrides contract, including benign settings.
  OR EXISTS(SELECT 1 FROM pg_catalog.pg_db_role_setting s
-   WHERE s.setrole IN (l.oid,g.oid))
+   WHERE s.setrole IN (l.oid,g.oid)
+     OR (s.setrole=0 AND s.setdatabase=(
+       SELECT d.oid FROM pg_catalog.pg_database d
+       WHERE d.datname=current_database())))
  -- The allowed NOLOGIN group must not hold cluster-wide database ownership,
  -- independent database/schema CREATE, or explicit parameter SET authority.
  -- These privileges become usable as soon as the login SET ROLEs to g.
