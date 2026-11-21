@@ -11,8 +11,16 @@ const CHECK=String.raw`SELECT
  l.rolname::text AS login_name,
  (
  l.rolsuper OR l.rolbypassrls OR l.rolcreaterole OR l.rolcreatedb OR l.rolreplication OR l.rolinherit OR NOT l.rolcanlogin
+ -- A reused connection must be in its original authenticated login context;
+ -- an already-activated SET ROLE is not an admissible checkout state.
+ OR current_user<>session_user
  OR (l.rolvaliduntil IS NOT NULL AND l.rolvaliduntil<=clock_timestamp())
  OR g.rolsuper OR g.rolbypassrls OR g.rolcreaterole OR g.rolcreatedb OR g.rolreplication OR g.rolinherit
+ -- No dedicated login/service-group startup GUC may silently alter session
+ -- policy. Includes both ALTER ROLE SET and ALTER ROLE IN DATABASE SET.
+ -- This is a strict zero-overrides contract, including benign settings.
+ OR EXISTS(SELECT 1 FROM pg_catalog.pg_db_role_setting s
+   WHERE s.setrole IN (l.oid,g.oid))
  -- The allowed NOLOGIN group must not hold cluster-wide database ownership,
  -- independent database/schema CREATE, or explicit parameter SET authority.
  -- These privileges become usable as soon as the login SET ROLEs to g.
