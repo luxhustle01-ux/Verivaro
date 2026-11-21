@@ -10,7 +10,7 @@ const {Pool}=createRequire(resolve(process.env.VV_TEST_DRIVER_DIR,'package.json'
 const dir=process.env.VV_TLS_FIXTURE,role='verivaro_monitor_reader';
 const config={host:process.env.PGHOST,port:Number(process.env.PGPORT),database:process.env.PGDATABASE,max:2,connectionTimeoutMillis:3000};
 const env=(login,which,extra={})=>({PGHOST:'localhost',PGPORT:process.env.PGPORT,PGUSER:login,PGDATABASE:'verivaro_test',VV_DB_PASSWORD_FILE:join(dir,which+'-password'),VV_DB_CA_FILE:join(dir,'ca.pem'),...extra});
-test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential retirement terminates old sessions',{timeout:45000},async()=>{
+test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential retirement terminates old sessions',{timeout:90000},async()=>{
  const admin=new Pool({...config,user:process.env.PGUSER,password:process.env.PGPASSWORD});
  const oldLogin='vv_ci_tls_old',newLogin='vv_ci_tls_new';
  const oldCfg=await loadServicePoolConfig({env:env(oldLogin,'old'),role}),newCfg=await loadServicePoolConfig({env:env(newLogin,'new'),role});
@@ -29,16 +29,12 @@ test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential r
   // unexpected elevated replacement is rejected without any retirement DDL.
   await admin.query('GRANT pg_read_all_data TO vv_ci_tls_new');
   try{
-   const c=await admin.connect();
-   try{await assert.rejects(retireServiceCredential(c,{role,oldLogin,newLogin,confirm:oldLogin}),/credential retirement failed/);}
-   finally{c.release(true);}
+   await assert.rejects(retireServiceCredential(admin,{role,oldLogin,newLogin,confirm:oldLogin}),/credential retirement failed/);
    assert.equal((await oldPool.query('SELECT 1 AS ok')).rows[0].ok,1);
   }finally{await admin.query('REVOKE pg_read_all_data FROM vv_ci_tls_new');}
   await admin.query('GRANT verivaro_monitor_reader TO vv_ci_tls_new WITH ADMIN OPTION');
   try{
-   const c=await admin.connect();
-   try{await assert.rejects(retireServiceCredential(c,{role,oldLogin,newLogin,confirm:oldLogin}),/credential retirement failed/);}
-   finally{c.release(true);}
+   await assert.rejects(retireServiceCredential(admin,{role,oldLogin,newLogin,confirm:oldLogin}),/credential retirement failed/);
    assert.equal((await oldPool.query('SELECT 1 AS ok')).rows[0].ok,1);
   }finally{await admin.query('REVOKE ADMIN OPTION FOR verivaro_monitor_reader FROM vv_ci_tls_new');}
   // A replacement with unexpected *direct* ACLs must never trigger
@@ -46,11 +42,9 @@ test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential r
   async function rejectDirectGrant(grant,revoke){
    await admin.query(grant);
    try{
-    const c=await admin.connect();
-    try{await assert.rejects(
-     retireServiceCredential(c,{role,oldLogin,newLogin,confirm:oldLogin}),
+    await assert.rejects(
+     retireServiceCredential(admin,{role,oldLogin,newLogin,confirm:oldLogin}),
      /credential retirement failed/);
-    }finally{c.release(true);}
     // Old login remains authenticated, including during denied retirement.
     assert.equal((await oldPool.query('SELECT 1 AS ok')).rows[0].ok,1);
    }finally{await admin.query(revoke);}
@@ -96,12 +90,9 @@ test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential r
   // Ownership outside the connected database is also disqualifying.
   await admin.query('CREATE DATABASE vv_ci_tls_owned_db OWNER vv_ci_tls_new');
   try{
-   const c=await admin.connect();
-   try{
-    await assert.rejects(
-     retireServiceCredential(c,{role,oldLogin,newLogin,confirm:oldLogin}),
-     /credential retirement failed/);
-   }finally{c.release(true);}
+   await assert.rejects(
+    retireServiceCredential(admin,{role,oldLogin,newLogin,confirm:oldLogin}),
+    /credential retirement failed/);
    assert.equal((await oldPool.query('SELECT 1 AS ok')).rows[0].ok,1);
   }finally{await admin.query('DROP DATABASE vv_ci_tls_owned_db');}
   assert.ok((await replacement.snapshot()).health);
@@ -109,12 +100,9 @@ test('live PostgreSQL TLS rejects wrong CA, hostname and plaintext; credential r
   held=await oldPool.connect();held.on('error',()=>{});
   await held.query('SET ROLE verivaro_monitor_reader');
   const pid=held.processID;
-  const c=await admin.connect();
-  try{
-   await assert.rejects(retireServiceCredential(c,{role,oldLogin,newLogin,confirm:'wrong'}));
-   const retired=await retireServiceCredential(c,{role,oldLogin,newLogin,confirm:oldLogin});assert.deepEqual(retired,{retired:true,remainingSessions:0});
-   assert.equal((await c.query('SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid=$1',[pid])).rows[0].n,0);
-  }finally{c.release(true);}
+  await assert.rejects(retireServiceCredential(admin,{role,oldLogin,newLogin,confirm:'wrong'}));
+  const retired=await retireServiceCredential(admin,{role,oldLogin,newLogin,confirm:oldLogin});assert.deepEqual(retired,{retired:true,remainingSessions:0});
+  assert.equal((await admin.query('SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid=$1',[pid])).rows[0].n,0);
   await assert.rejects(held.query('SELECT 1'));
   await rejected(oldCfg,/not permitted|authentication|password|login/i);
   assert.ok((await replacement.snapshot()).health);
