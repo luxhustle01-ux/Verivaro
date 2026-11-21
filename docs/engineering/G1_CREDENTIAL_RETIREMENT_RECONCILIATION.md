@@ -59,16 +59,20 @@ FROM pg_catalog.pg_stat_activity
 WHERE usename IN (:'old_login', :'new_login')
 GROUP BY usename ORDER BY principal;
 
-SELECT r.rolname AS principal, s.setdatabase, s.setconfig
+SELECT coalesce(r.rolname, '[database default]') AS principal,
+       s.setdatabase, cardinality(s.setconfig) AS override_count
 FROM pg_catalog.pg_db_role_setting s
-JOIN pg_catalog.pg_roles r ON r.oid=s.setrole
-WHERE r.rolname IN (:'old_login', :'new_login', :'group_role');
+LEFT JOIN pg_catalog.pg_roles r ON r.oid=s.setrole
+WHERE r.rolname IN (:'old_login', :'new_login', :'group_role')
+   OR (s.setrole=0 AND s.setdatabase=(
+       SELECT oid FROM pg_catalog.pg_database
+       WHERE datname=current_database()));
 ```
 
-**Evidence constraints:** recording `setconfig` can expose operational
-configuration or sensitive values; never copy unredacted secrets into a
-ticket or buyer handover. Evidence exports should contain approved redacted
-fields and stable, independently signed timestamps. Empty `pg_stat_activity`
+**Evidence constraints:** this example records only the **count** of
+configuration overrides, never `setconfig` values, which could contain
+secrets. Evidence exports should contain approved redacted fields and stable,
+independently signed timestamps. Empty `pg_stat_activity`
 results are not authoritative if the reviewer lacks visibility of other
 sessions. Querying this state is read-only; obtaining the required account,
 network access and permission is a separate authorisation gate.
